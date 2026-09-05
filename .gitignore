@@ -1,0 +1,28 @@
+# Ambientes virtuais
+venv/
+.venv/
+env/
+
+# Bytecode Python
+__pycache__/
+*.py[cod]
+*.pyd
+
+# Imagens forenses / dumps de disco
+*.dd
+*.img
+*.e01
+
+# Artefactos locais
+*.db
+*.sqlite
+*.sqlite3
+*.pdf
+output/
+recovered/
+
+# IDE / SO
+.idea/
+.vscode/
+Thumbs.db
+desktop.ini

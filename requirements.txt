@@ -1,0 +1,4 @@
+pytsk3
+PySide6
+pywin32
+reportlab
