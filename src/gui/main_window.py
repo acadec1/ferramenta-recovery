@@ -253,8 +253,9 @@ class MainWindow(QMainWindow):
         try:
             report.generate_report(eventos, destino)
         except Exception as erro:
-            QMessageBox.critical(self, "Relatorio", "Falha ao gerar o relatorio:
-%s" % erro)
+            QMessageBox.critical(
+                self, "Relatorio", "Falha ao gerar o relatorio:\n%s" % erro
+            )
             return
 
         self.audit_log.log_event(
