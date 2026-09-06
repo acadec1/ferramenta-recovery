@@ -103,6 +103,10 @@ class JanelaBase(unittest.TestCase):
     def _accoes(self):
         return [evento["action"] for evento in self.log.get_events()]
 
+    def _cartao(self, janela, tipo, indice=0):
+        cartoes = [c for c in janela.devices_page.cartoes if c.dados["tipo"] == tipo]
+        return cartoes[indice]
+
 
 class SessaoTest(JanelaBase):
     def test_arranca_no_painel_de_login(self):
@@ -119,7 +123,7 @@ class SessaoTest(JanelaBase):
         self.assertIsNot(janela.janela.currentWidget(), janela.login_page)
         self.assertEqual(janela.user["username"], "admin")
         self.assertEqual(janela.painel_actual(), "dispositivos")
-        self.assertEqual(janela.devices_page.arvore.topLevelItemCount(), 2)
+        self.assertEqual(len(janela.devices_page.cartoes), 4)
 
     def test_login_falhado_fica_no_mesmo_painel(self):
         janela = self._janela(user=None)
@@ -266,9 +270,8 @@ class VarrimentoTest(JanelaBase):
     def test_varrimento_a_partir_do_painel_de_dispositivos(self):
         janela = self._janela(ADMIN)
         scan = self._patch("filesystem_parser.scan_deleted_entries", return_value=[])
-        janela.devices_page.arvore.setCurrentItem(
-            janela.devices_page.arvore.topLevelItem(1)
-        )
+        cartao = self._cartao(janela, "disco", 1)
+        cartao.escolhido.emit(cartao.dados)
 
         janela.devices_page.painel.botao_accao.click()
 
@@ -385,7 +388,6 @@ class CarvingTest(JanelaBase):
     def test_carving_sem_dispositivo(self):
         janela = self._janela(ADMIN)
         carve = self._patch("carving_module.carve_by_signature")
-        janela.devices_page.arvore.clearSelection()
 
         janela.executar_carving("pdf")
 
@@ -396,9 +398,8 @@ class CarvingTest(JanelaBase):
         janela = self._janela(ADMIN)
         carve = self._patch("carving_module.carve_by_signature", return_value=[])
         self._patch("MainWindow.escolher_pasta", return_value=self.tmp)
-        janela.devices_page.arvore.setCurrentItem(
-            janela.devices_page.arvore.topLevelItem(0)
-        )
+        cartao = self._cartao(janela, "disco", 0)
+        cartao.escolhido.emit(cartao.dados)
 
         janela.executar_carving("pdf")
 
@@ -466,6 +467,82 @@ class RelatorioTest(JanelaBase):
         self.assertEqual(janela.banner.property("tipo"), "erro")
         abrir.assert_not_called()
         self.assertEqual(self._accoes(), ["scan"])
+
+
+class ElevacaoTest(JanelaBase):
+    def test_botao_visivel_sem_privilegios(self):
+        janela = self._janela(ADMIN)
+        self.assertTrue(janela.botao_elevar.isVisibleTo(janela))
+
+    def test_botao_escondido_com_privilegios(self):
+        self._patch("device_reader.is_admin", return_value=True)
+        janela = self._janela(ADMIN)
+        self.assertFalse(janela.botao_elevar.isVisibleTo(janela))
+
+    def test_clique_relanca_a_aplicacao(self):
+        janela = self._janela(ADMIN)
+        relancar = self._patch("device_reader.relaunch_as_admin", return_value=True)
+        sair = self._patch("QApplication.quit")
+
+        janela.botao_elevar.click()
+
+        relancar.assert_called_once_with()
+        sair.assert_called_once_with()
+
+    def test_elevacao_recusada(self):
+        janela = self._janela(ADMIN)
+        self._patch("device_reader.relaunch_as_admin", return_value=False)
+        sair = self._patch("QApplication.quit")
+
+        janela.botao_elevar.click()
+
+        sair.assert_not_called()
+        self.assertEqual(janela.banner.property("tipo"), "aviso")
+
+    def test_varrimento_sem_privilegios_explica_e_oferece_elevacao(self):
+        janela = self._janela(ADMIN)
+        self._patch(
+            "filesystem_parser.scan_deleted_entries",
+            side_effect=PermissionError("Acesso negado a X. Reinicie como Administrador."),
+        )
+
+        janela.varrer(DISPOSITIVO)
+
+        self.assertEqual(janela.banner.property("tipo"), "erro")
+        self.assertIn("Acesso negado", janela.banner.text())
+        self.assertTrue(janela.botao_elevar.isVisibleTo(janela))
+        self.assertEqual(self.log.get_events(), [])
+
+
+class ImagemDeDiscoTest(JanelaBase):
+    def test_escolher_imagem(self):
+        janela = self._janela(ADMIN)
+        caminho = os.path.join(self.tmp, "caso1.dd")
+        self._patch("QFileDialog.getOpenFileName", return_value=(caminho, ""))
+
+        janela.escolher_imagem()
+
+        self.assertEqual(janela.devices_page.dispositivo_selecionado(), caminho)
+        self.assertIn(caminho, janela.banner.text())
+
+    def test_escolher_imagem_cancelado(self):
+        janela = self._janela(ADMIN)
+        self._patch("QFileDialog.getOpenFileName", return_value=("", ""))
+
+        janela.escolher_imagem()
+
+        self.assertIsNone(janela.devices_page.dispositivo_selecionado())
+
+    def test_varrer_a_imagem_escolhida(self):
+        janela = self._janela(ADMIN)
+        caminho = os.path.join(self.tmp, "caso1.dd")
+        self._patch("QFileDialog.getOpenFileName", return_value=(caminho, ""))
+        scan = self._patch("filesystem_parser.scan_deleted_entries", return_value=[])
+
+        janela.escolher_imagem()
+        janela.devices_page.painel.botao_accao.click()
+
+        scan.assert_called_once_with(caminho)
 
 
 class EstadoTest(JanelaBase):

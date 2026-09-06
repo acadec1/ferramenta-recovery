@@ -10,7 +10,10 @@ e serve de alternativa.
 from __future__ import annotations
 
 import ctypes
+import os
 import struct
+import subprocess
+import sys
 
 DEVICE_PATH_TEMPLATE = r"\\.\PhysicalDrive{}"
 
@@ -34,7 +37,19 @@ TIPOS_DE_UNIDADE = {
     6: "Disco RAM",
 }
 
+SHELL_EXECUTE_MINIMO = 32  # ShellExecuteW devolve <= 32 em caso de erro
+SW_SHOWNORMAL = 1
+
 _kernel32 = None
+_shell32 = None
+
+
+def _get_shell32():
+    """Devolve (e memoriza) o handle para shell32. Ponto de patch nos testes."""
+    global _shell32
+    if _shell32 is None:
+        _shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    return _shell32
 
 
 def _get_kernel32():
@@ -234,6 +249,39 @@ def list_logical_volumes() -> list[dict]:
 def is_admin() -> bool:
     """Indica se o processo esta a correr com privilegios de Administrador."""
     try:
-        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+        return bool(_get_shell32().IsUserAnAdmin())
     except Exception:
         return False
+
+
+def _argumentos_de_relancamento() -> str:
+    """Argumentos que repetem o arranque actual (incluindo o modo ``-m``)."""
+    modulo = getattr(getattr(sys.modules.get("__main__"), "__spec__", None), "name", "")
+    if modulo:
+        if modulo.endswith(".__main__"):
+            modulo = modulo[: -len(".__main__")]
+        return subprocess.list2cmdline(["-m", modulo] + sys.argv[1:])
+    return subprocess.list2cmdline(sys.argv)
+
+
+def relaunch_as_admin() -> bool:
+    """Relanca a aplicacao pedindo elevacao ao Windows (UAC).
+
+    Devolve True se o processo elevado foi lancado — nesse caso o processo
+    actual deve terminar. Devolve False se ja havia privilegios ou se o
+    utilizador recusou o pedido de elevacao.
+    """
+    if is_admin():
+        return False
+    try:
+        resultado = _get_shell32().ShellExecuteW(
+            None,
+            "runas",
+            sys.executable,
+            _argumentos_de_relancamento(),
+            os.getcwd(),
+            SW_SHOWNORMAL,
+        )
+    except Exception:
+        return False
+    return int(resultado) > SHELL_EXECUTE_MINIMO

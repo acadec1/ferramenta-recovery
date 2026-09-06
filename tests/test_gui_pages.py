@@ -18,7 +18,14 @@ try:
     from src.gui.pages.devices import DevicesPage
     from src.gui.pages.login import ERRO_CREDENCIAIS, LoginPage
     from src.gui.pages.results import ResultsPage
-    from src.gui.widgets import Banner, PainelDeDetalhes, formatar_tamanho
+    from src.gui import icons
+    from src.gui.widgets import (
+        Banner,
+        CartaoDeDispositivo,
+        PainelDeDetalhes,
+        TituloDeSeccao,
+        formatar_tamanho,
+    )
 except ImportError:  # pragma: no cover - depende do ambiente
     LoginPage = None
 
@@ -143,57 +150,109 @@ class DevicesPageTest(PainelBase):
         self.pagina = self.registar(DevicesPage())
         self.pagina.carregar()
 
-    def test_discos_no_primeiro_nivel(self):
-        self.assertEqual(self.pagina.arvore.topLevelItemCount(), 3)  # 2 discos + G:
-        self.assertEqual(self.pagina.arvore.topLevelItem(0).text(0), "Disco fisico 0")
-        self.assertEqual(self.pagina.arvore.topLevelItem(0).text(3), "465.8 GB")
+    def _cartoes(self, tipo):
+        return [c for c in self.pagina.cartoes if c.dados["tipo"] == tipo]
 
-    def test_volumes_aninhados_no_disco(self):
-        disco0 = self.pagina.arvore.topLevelItem(0)
-        disco1 = self.pagina.arvore.topLevelItem(1)
-        self.assertEqual(disco0.childCount(), 1)
-        self.assertEqual(disco0.child(0).text(0), "Mamboza Jr. (D:)")
-        self.assertEqual(disco0.child(0).text(2), "NTFS")
-        self.assertEqual(disco1.child(0).text(0), "Volume local (C:)")
+    def _seccoes(self):
+        titulos = []
+        for indice in range(self.pagina.seccoes.count()):
+            widget = self.pagina.seccoes.itemAt(indice).widget()
+            if isinstance(widget, TituloDeSeccao):
+                titulos.append(widget.text())
+        return titulos
 
-    def test_volume_sem_disco_fica_no_primeiro_nivel(self):
-        solto = self.pagina.arvore.topLevelItem(2)
-        self.assertEqual(solto.text(0), "SD Card (G:)")
-        self.assertEqual(solto.text(2), "exFAT")
+    def test_seccoes_com_contagem(self):
+        self.assertEqual(
+            self._seccoes(),
+            [
+                "Discos fisicos (2)",
+                "Volumes locais (2)",
+                "Unidades externas (1)",
+                "Acesso rapido (1)",
+            ],
+        )
 
-    def test_contagem_de_elementos(self):
-        self.assertEqual(self.pagina.etiqueta_contagem.text(), "5 elementos")
+    def test_um_cartao_por_dispositivo(self):
+        self.assertEqual(len(self._cartoes("disco")), 2)
+        self.assertEqual(len(self._cartoes("volume")), 3)
+        self.assertEqual(len(self._cartoes("imagem")), 1)
 
-    def test_detalhes_do_disco(self):
-        self.pagina.arvore.setCurrentItem(self.pagina.arvore.topLevelItem(0))
-        self.assertEqual(self.pagina.painel.etiqueta_titulo.text(), "Disco fisico 0")
-        valores = self.pagina.painel.valores()
-        self.assertEqual(valores["Caminho:"], r"\\.\PhysicalDrive0")
-        self.assertEqual(valores["Capacidade:"], "465.8 GB")
-        self.assertTrue(self.pagina.painel.botao_accao.isEnabled())
+    def test_cartao_de_disco(self):
+        cartao = self._cartoes("disco")[0]
+        self.assertEqual(cartao.etiqueta_nome.text(), "Disco fisico 0")
+        self.assertEqual(cartao.etiqueta_detalhe.text(), "Acesso bruto • 465.8 GB")
+        self.assertFalse(cartao.barra.isVisible())
+
+    def test_cartao_de_volume_mostra_ocupacao(self):
+        cartao = next(c for c in self._cartoes("volume")
+                      if c.dados["dados"]["letter"] == "D")
+        self.assertEqual(cartao.etiqueta_nome.text(), "Mamboza Jr. (D:)")
+        self.assertEqual(cartao.etiqueta_detalhe.text(), "NTFS • Fixo")
+        self.assertEqual(cartao.barra.value(), 61)  # 305 GB usados de 500 GB
+        self.assertIn("livres de", cartao.etiqueta_capacidade.text())
+
+    def test_unidade_externa_numa_seccao_propria(self):
+        externo = next(c for c in self._cartoes("volume")
+                       if c.dados["dados"]["letter"] == "G")
+        self.assertEqual(externo.etiqueta_detalhe.text(), "exFAT • Removivel")
+
+    def test_seleccionar_cartao(self):
+        cartao = self._cartoes("disco")[1]
+        cartao.escolhido.emit(cartao.dados)
+
+        self.assertTrue(cartao.esta_seleccionado())
+        self.assertFalse(self._cartoes("disco")[0].esta_seleccionado())
+        self.assertEqual(self.pagina.dispositivo_selecionado(), r"\\.\PhysicalDrive1")
+        self.assertEqual(self.pagina.painel.etiqueta_titulo.text(), "Disco fisico 1")
 
     def test_detalhes_do_volume(self):
-        disco0 = self.pagina.arvore.topLevelItem(0)
-        self.pagina.arvore.setCurrentItem(disco0.child(0))
+        cartao = next(c for c in self._cartoes("volume")
+                      if c.dados["dados"]["letter"] == "D")
+        cartao.escolhido.emit(cartao.dados)
+
         valores = self.pagina.painel.valores()
         self.assertEqual(valores["Sistema de ficheiros:"], "NTFS")
         self.assertEqual(valores["Caminho:"], r"\\.\D:")
         self.assertEqual(valores["Disco fisico:"], "0")
-        self.assertEqual(self.pagina.dispositivo_selecionado(), r"\\.\D:")
 
     def test_pedido_de_varrimento(self):
         pedidos = self.capturar(self.pagina.varrimento_pedido)
-        self.pagina.arvore.setCurrentItem(self.pagina.arvore.topLevelItem(1))
+        cartao = self._cartoes("disco")[1]
+        cartao.escolhido.emit(cartao.dados)
 
         self.pagina.painel.botao_accao.click()
 
         self.assertEqual(pedidos, [r"\\.\PhysicalDrive1"])
 
+    def test_duplo_clique_varre_logo(self):
+        pedidos = self.capturar(self.pagina.varrimento_pedido)
+        cartao = self._cartoes("disco")[0]
+
+        cartao.activado.emit(cartao.dados)
+
+        self.assertEqual(pedidos, [r"\\.\PhysicalDrive0"])
+
     def test_sem_seleccao_nao_pede_varrimento(self):
         pedidos = self.capturar(self.pagina.varrimento_pedido)
-        self.pagina.arvore.clearSelection()
         self.pagina.painel.botao_accao.click()
         self.assertEqual(pedidos, [])
+
+    def test_cartao_de_imagem_pede_ficheiro(self):
+        pedidos = self.capturar(self.pagina.imagem_pedida)
+        cartao = self._cartoes("imagem")[0]
+
+        cartao.escolhido.emit(cartao.dados)
+
+        self.assertEqual(len(pedidos), 1)
+        self.assertIsNone(self.pagina.dispositivo_selecionado())
+
+    def test_definir_imagem_selecciona_o_cartao(self):
+        self.pagina.definir_imagem(r"D:\provas\caso1.dd")
+
+        cartao = self._cartoes("imagem")[0]
+        self.assertTrue(cartao.esta_seleccionado())
+        self.assertEqual(self.pagina.dispositivo_selecionado(), r"D:\provas\caso1.dd")
+        self.assertEqual(cartao.etiqueta_detalhe.text(), r"D:\provas\caso1.dd")
 
     def test_sem_dispositivos(self):
         with mock.patch("src.gui.pages.devices.device_reader.list_physical_drives",
@@ -201,8 +260,37 @@ class DevicesPageTest(PainelBase):
              mock.patch("src.gui.pages.devices.device_reader.list_logical_volumes",
                         return_value=[]):
             self.pagina.carregar()
-        self.assertEqual(self.pagina.arvore.topLevelItemCount(), 0)
-        self.assertEqual(self.pagina.etiqueta_contagem.text(), "0 elementos")
+        self.assertEqual(len(self._cartoes("disco")), 0)
+        self.assertEqual(self._seccoes()[0], "Discos fisicos (0)")
+
+
+class IconesTest(PainelBase):
+    def test_desenha_pixmap_quadrado(self):
+        imagem = icons.pixmap("disco", 20)
+        self.assertFalse(imagem.isNull())
+        self.assertEqual(imagem.width(), imagem.height())
+
+    def test_reutiliza_o_mesmo_desenho(self):
+        icons.limpar_cache()
+        primeiro = icons.pixmap("volume", 18, "#123456")
+        segundo = icons.pixmap("volume", 18, "#123456")
+        self.assertIs(primeiro, segundo)
+
+    def test_chip_colorido(self):
+        imagem = icons.chip("disco", "verde", 44)
+        self.assertFalse(imagem.isNull())
+        self.assertEqual(imagem.width() / imagem.devicePixelRatio(), 44)
+
+    def test_todos_os_icones_desenham(self):
+        for nome in icons.DESENHOS:
+            self.assertFalse(icons.pixmap(nome, 16).isNull(), nome)
+
+    def test_icone_desconhecido(self):
+        with self.assertRaises(KeyError):
+            icons.pixmap("inexistente")
+
+    def test_icone_para_botoes(self):
+        self.assertFalse(icons.icone("lupa", 16).isNull())
 
 
 class ResultsPageTest(PainelBase):

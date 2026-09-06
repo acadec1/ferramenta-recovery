@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from src.gui import theme
+from src.gui import icons, theme
 
 
 class Banner(QLabel):
@@ -134,6 +135,95 @@ class PainelDeDetalhes(QFrame):
             if rotulo is not None and valor is not None:
                 resultado[rotulo.widget().text()] = valor.widget().text()
         return resultado
+
+
+class CartaoDeDispositivo(QFrame):
+    """Cartao clicavel com icone, nome, ocupacao e capacidade do dispositivo."""
+
+    escolhido = Signal(object)
+    activado = Signal(object)
+
+    def __init__(self, dados: dict, titulo: str, subtitulo: str, nome_do_icone: str,
+                 cor: str = "azul", usado: int | None = None,
+                 total: int | None = None, parent=None):
+        super().__init__(parent)
+        self.dados = dados
+        self.setObjectName(theme.CARTAO_DISPOSITIVO)
+        self.setProperty("seleccionado", False)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMinimumHeight(84)
+
+        self.etiqueta_icone = QLabel()
+        self.etiqueta_icone.setPixmap(icons.chip(nome_do_icone, cor))
+        self.etiqueta_icone.setFixedSize(44, 44)
+
+        self.etiqueta_nome = QLabel(titulo)
+        self.etiqueta_nome.setObjectName(theme.NOME_DO_CARTAO)
+        self.etiqueta_detalhe = QLabel(subtitulo)
+        self.etiqueta_detalhe.setObjectName(theme.DETALHE_DO_CARTAO)
+
+        self.barra = QProgressBar()
+        self.barra.setObjectName(theme.BARRA_CAPACIDADE)
+        self.barra.setTextVisible(False)
+        self.etiqueta_capacidade = QLabel("")
+        self.etiqueta_capacidade.setObjectName(theme.DETALHE_DO_CARTAO)
+        self._mostrar_ocupacao(usado, total)
+
+        texto = QVBoxLayout()
+        texto.setContentsMargins(0, 0, 0, 0)
+        texto.setSpacing(3)
+        texto.addWidget(self.etiqueta_nome)
+        texto.addWidget(self.etiqueta_detalhe)
+        texto.addWidget(self.barra)
+        texto.addWidget(self.etiqueta_capacidade)
+
+        disposicao = QHBoxLayout(self)
+        disposicao.setContentsMargins(14, 12, 14, 12)
+        disposicao.setSpacing(12)
+        disposicao.addWidget(self.etiqueta_icone, 0, Qt.AlignTop)
+        disposicao.addLayout(texto, 1)
+
+    def _mostrar_ocupacao(self, usado, total) -> None:
+        if not total or usado is None:
+            self.barra.setVisible(False)
+            self.etiqueta_capacidade.setVisible(False)
+            return
+        percentagem = max(0, min(100, round(usado * 100 / total)))
+        self.barra.setValue(percentagem)
+        self.barra.setProperty("nivel", "alto" if percentagem >= 90 else "normal")
+        theme.repolir(self.barra)
+        self.etiqueta_capacidade.setText(
+            "%s livres de %s" % (formatar_tamanho(total - usado), formatar_tamanho(total))
+        )
+
+    def definir_seleccionado(self, seleccionado: bool) -> None:
+        self.setProperty("seleccionado", bool(seleccionado))
+        theme.repolir(self)
+
+    def esta_seleccionado(self) -> bool:
+        return bool(self.property("seleccionado"))
+
+    def mousePressEvent(self, evento):  # noqa: N802 (nome imposto pelo Qt)
+        self.escolhido.emit(self.dados)
+        super().mousePressEvent(evento)
+
+    def mouseDoubleClickEvent(self, evento):  # noqa: N802 (nome imposto pelo Qt)
+        self.activado.emit(self.dados)
+        super().mouseDoubleClickEvent(evento)
+
+
+class TituloDeSeccao(QLabel):
+    """Rotulo de seccao com a contagem de elementos, como 'Discos fisicos (2)'."""
+
+    def __init__(self, texto: str, quantidade: int = 0, parent=None):
+        super().__init__("", parent)
+        self.setObjectName(theme.TITULO_SECCAO)
+        self.texto = texto
+        self.definir_quantidade(quantidade)
+
+    def definir_quantidade(self, quantidade: int) -> None:
+        self.quantidade = quantidade
+        self.setText("%s (%d)" % (self.texto, quantidade))
 
 
 def barra_de_accoes(*widgets) -> QHBoxLayout:

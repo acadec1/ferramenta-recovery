@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 import sys
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QApplication,
@@ -52,7 +52,7 @@ from src.auth import (
     AuthStore,
     has_permission,
 )
-from src.gui import theme
+from src.gui import icons, theme
 from src.gui.pages.accounts import AccountsPage
 from src.gui.pages.audit import AuditPage
 from src.gui.pages.carving import CarvingPage
@@ -71,11 +71,19 @@ SEM_PERMISSAO = "O perfil %s nao tem permissao para esta accao."
 
 # Paineis da barra lateral: chave, rotulo, seccao e permissao necessaria.
 MENU = (
-    ("dispositivos", "Dispositivos", "Recuperacao de dados", PERMISSION_SCAN),
-    ("resultados", "Ficheiros apagados", "Recuperacao de dados", PERMISSION_RECOVER),
-    ("carving", "Carving por assinatura", "Recuperacao de dados", PERMISSION_RECOVER),
-    ("auditoria", "Cadeia de custodia", "Ferramentas", PERMISSION_REPORT),
-    ("contas", "Contas de acesso", "Ferramentas", PERMISSION_MANAGE_USERS),
+    ("dispositivos", "Dispositivos", "Recuperacao de dados", PERMISSION_SCAN, "disco"),
+    ("resultados", "Ficheiros apagados", "Recuperacao de dados", PERMISSION_RECOVER,
+     "ficheiro"),
+    ("carving", "Carving por assinatura", "Recuperacao de dados", PERMISSION_RECOVER,
+     "carving"),
+    ("auditoria", "Cadeia de custodia", "Ferramentas", PERMISSION_REPORT, "auditoria"),
+    ("contas", "Contas de acesso", "Ferramentas", PERMISSION_MANAGE_USERS, "contas"),
+)
+
+FILTRO_DE_IMAGENS = "Imagens de disco (*.dd *.img *.raw *.bin);;Todos os ficheiros (*)"
+ELEVACAO_RECUSADA = (
+    "A elevacao foi recusada. Sem privilegios de Administrador o Windows nao "
+    "deixa ler o disco em bruto."
 )
 
 
@@ -129,8 +137,12 @@ class MainWindow(QMainWindow):
         return aplicacao
 
     def _construir_cabecalho(self) -> QFrame:
+        marca = QLabel()
+        marca.setPixmap(icons.chip("logotipo", "azul", 38))
+        marca.setFixedSize(38, 38)
+
         titulo = QLabel("FRDA")
-        titulo.setObjectName(theme.TITULO_JANELA)
+        titulo.setObjectName(theme.MARCA)
         subtitulo = QLabel("Recuperacao forense de dados apagados")
         subtitulo.setObjectName(theme.SUBTITULO)
         identificacao = QVBoxLayout()
@@ -140,14 +152,20 @@ class MainWindow(QMainWindow):
 
         self.etiqueta_sessao = QLabel("")
         self.etiqueta_sessao.setObjectName(theme.SUBTITULO)
+        self.botao_elevar = QPushButton("  Reiniciar como Administrador")
+        self.botao_elevar.setObjectName(theme.BOTAO_SECUNDARIO)
+        self.botao_elevar.setIcon(icons.icone("administrador", 16, theme.CORES["erro"]))
         self.botao_terminar_sessao = QPushButton("Terminar sessao")
         self.botao_terminar_sessao.setObjectName(theme.BOTAO_SECUNDARIO)
 
         conteudo = QHBoxLayout()
         conteudo.setContentsMargins(20, 12, 20, 12)
+        conteudo.setSpacing(12)
+        conteudo.addWidget(marca)
         conteudo.addLayout(identificacao)
         conteudo.addStretch(1)
         conteudo.addWidget(self.etiqueta_sessao)
+        conteudo.addWidget(self.botao_elevar)
         conteudo.addWidget(self.botao_terminar_sessao)
 
         cabecalho = QFrame()
@@ -158,11 +176,12 @@ class MainWindow(QMainWindow):
     def _construir_barra_lateral(self) -> QWidget:
         self.menu = QListWidget()
         self.menu.setObjectName(theme.MENU_LATERAL)
+        self.menu.setIconSize(QSize(18, 18))
         self.itens_do_menu: dict[str, QListWidgetItem] = {}
         self.cabecalhos_de_seccao: dict[str, QListWidgetItem] = {}
 
         seccao_actual = None
-        for chave, rotulo, seccao, _permissao in MENU:
+        for chave, rotulo, seccao, _permissao, nome_do_icone in MENU:
             if seccao != seccao_actual:
                 cabecalho = QListWidgetItem(seccao)
                 cabecalho.setFlags(Qt.NoItemFlags)
@@ -170,6 +189,7 @@ class MainWindow(QMainWindow):
                 self.cabecalhos_de_seccao[seccao] = cabecalho
                 seccao_actual = seccao
             item = QListWidgetItem(rotulo)
+            item.setIcon(icons.icone(nome_do_icone, 18, theme.CORES["texto_suave"]))
             item.setData(Qt.UserRole, chave)
             self.menu.addItem(item)
             self.itens_do_menu[chave] = item
@@ -199,7 +219,7 @@ class MainWindow(QMainWindow):
         }
 
         self.conteudo = QStackedWidget()
-        for chave, _rotulo, _seccao, _permissao in MENU:
+        for chave, _rotulo, _seccao, _permissao, _icone in MENU:
             self.conteudo.addWidget(self.paineis[chave])
 
         self.banner = Banner()
@@ -221,6 +241,8 @@ class MainWindow(QMainWindow):
         self.botao_terminar_sessao.clicked.connect(self.terminar_sessao)
         self.menu.currentItemChanged.connect(self._menu_mudou)
         self.devices_page.varrimento_pedido.connect(self.varrer)
+        self.devices_page.imagem_pedida.connect(self.escolher_imagem)
+        self.botao_elevar.clicked.connect(self.reiniciar_como_administrador)
         self.results_page.recuperacao_pedida.connect(self.recuperar)
         self.carving_page.carving_pedido.connect(self.executar_carving)
         self.audit_page.relatorio_pedido.connect(self.gerar_relatorio)
@@ -271,7 +293,7 @@ class MainWindow(QMainWindow):
     def aplicar_permissoes(self) -> None:
         """Esconde da barra lateral os paineis fora do perfil da conta."""
         visiveis_por_seccao: dict[str, bool] = {}
-        for chave, _rotulo, seccao, permissao in MENU:
+        for chave, _rotulo, seccao, permissao, _icone in MENU:
             permitido = self.pode(permissao)
             self.itens_do_menu[chave].setHidden(not permitido)
             visiveis_por_seccao[seccao] = visiveis_por_seccao.get(seccao, False) or permitido
@@ -324,6 +346,7 @@ class MainWindow(QMainWindow):
 
     def avisar_privilegios(self) -> None:
         """Indica na barra de estado se ha privilegios de Administrador."""
+        self.botao_elevar.setVisible(not device_reader.is_admin())
         if device_reader.is_admin():
             self.etiqueta_privilegios.setObjectName("estadoOk")
             self.etiqueta_privilegios.setText(ESTADO_ADMIN)
@@ -350,6 +373,10 @@ class MainWindow(QMainWindow):
         QGuiApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             entradas = filesystem_parser.scan_deleted_entries(device_path)
+        except PermissionError as erro:
+            self.notificar(str(erro), "erro")
+            self.botao_elevar.setVisible(True)
+            return
         except Exception as erro:
             self.notificar("Falha ao escanear %s: %s" % (device_path, erro), "erro")
             return
@@ -484,6 +511,22 @@ class MainWindow(QMainWindow):
         self.abrir_ficheiro(destino)
 
     # ------------------------------------------------------------- auxiliares
+
+    def escolher_imagem(self) -> None:
+        """Escolhe uma imagem de disco (.dd/.img) para analisar."""
+        caminho, _ = QFileDialog.getOpenFileName(
+            self, "Abrir imagem de disco", "", FILTRO_DE_IMAGENS
+        )
+        if caminho:
+            self.devices_page.definir_imagem(caminho)
+            self.notificar("Imagem seleccionada: %s" % caminho, "info")
+
+    def reiniciar_como_administrador(self) -> None:
+        """Relanca a aplicacao com elevacao e fecha esta instancia."""
+        if device_reader.relaunch_as_admin():
+            QApplication.quit()
+            return
+        self.notificar(ELEVACAO_RECUSADA, "aviso")
 
     def escolher_pasta(self, titulo: str) -> str:
         return QFileDialog.getExistingDirectory(self, titulo)

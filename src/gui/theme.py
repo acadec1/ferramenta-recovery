@@ -8,24 +8,27 @@ nao pareca uma sucessao de janelas diferentes.
 from __future__ import annotations
 
 CORES = {
-    "fundo": "#f7f8fa",
+    "fundo": "#f5f7fb",
     "superficie": "#ffffff",
-    "lateral": "#f3f4f6",
-    "painel": "#fbfcfd",
-    "texto": "#1b1f23",
-    "texto_suave": "#6b7280",
-    "contorno": "#e5e7eb",
-    "contorno_forte": "#d3d8de",
-    "primaria": "#0f6cbd",
-    "primaria_escura": "#0b5aa2",
-    "primaria_clara": "#e8f0fa",
-    "sucesso": "#1e7a44",
-    "sucesso_clara": "#e6f4ea",
-    "aviso": "#8a5a00",
-    "aviso_clara": "#fdf3e0",
-    "erro": "#b3261e",
-    "erro_clara": "#fbeae9",
-    "seleccao": "#e8f0fa",
+    "lateral": "#f1f4f9",
+    "painel": "#fbfcfe",
+    "texto": "#16202c",
+    "texto_suave": "#64748b",
+    "contorno": "#e2e8f0",
+    "contorno_forte": "#cbd5e1",
+    "primaria": "#1668e3",
+    "primaria_escura": "#0f52b8",
+    "primaria_clara": "#e4eeff",
+    "sucesso": "#0f7b46",
+    "sucesso_clara": "#e2f6ec",
+    "aviso": "#a4620a",
+    "aviso_clara": "#fdf0dc",
+    "erro": "#c62828",
+    "erro_clara": "#fdeaea",
+    "roxo": "#6d3fd1",
+    "roxo_claro": "#efe8ff",
+    "seleccao": "#e4eeff",
+    "barra_fundo": "#e6eaf1",
 }
 
 # Nomes de objecto usados pelos paineis para se ligarem ao tema.
@@ -41,6 +44,12 @@ PAINEL_DETALHES = "painelDetalhes"
 TITULO_PAINEL = "tituloPainel"
 BANNER = "banner"
 CARTAO = "cartao"
+CARTAO_DISPOSITIVO = "cartaoDispositivo"
+TITULO_SECCAO = "tituloSeccao"
+BARRA_CAPACIDADE = "barraCapacidade"
+NOME_DO_CARTAO = "nomeCartao"
+DETALHE_DO_CARTAO = "detalheCartao"
+MARCA = "marcaAplicacao"
 PAGINA_LOGIN = "paginaLogin"
 ROTULO_CAMPO = "rotuloCampo"
 VALOR_CAMPO = "valorCampo"
@@ -135,6 +144,57 @@ QFrame#{cartao} {{
     background-color: {superficie};
     border: 1px solid {contorno};
     border-radius: 8px;
+}}
+
+/* -------------------------------------------------- cartoes de dispositivo */
+QFrame#{cartao_dispositivo} {{
+    background-color: {superficie};
+    border: 1px solid {contorno};
+    border-radius: 10px;
+}}
+QFrame#{cartao_dispositivo}:hover {{
+    border-color: {primaria};
+}}
+QFrame#{cartao_dispositivo}[seleccionado="true"] {{
+    border: 2px solid {primaria};
+    background-color: {primaria_clara};
+}}
+QFrame#{cartao_dispositivo} QLabel {{
+    background-color: transparent;
+}}
+QLabel#{nome_do_cartao} {{
+    font-weight: bold;
+    font-size: 10.5pt;
+}}
+QLabel#{detalhe_do_cartao} {{
+    color: {texto_suave};
+    font-size: 9pt;
+}}
+QLabel#{titulo_seccao} {{
+    color: {texto};
+    font-weight: bold;
+    font-size: 10.5pt;
+}}
+QProgressBar#{barra_capacidade} {{
+    background-color: {barra_fundo};
+    border: 0;
+    border-radius: 3px;
+    max-height: 6px;
+    min-height: 6px;
+    text-align: center;
+    color: transparent;
+}}
+QProgressBar#{barra_capacidade}::chunk {{
+    background-color: {primaria};
+    border-radius: 3px;
+}}
+QProgressBar#{barra_capacidade}[nivel="alto"]::chunk {{
+    background-color: {erro};
+}}
+QLabel#{marca} {{
+    font-size: 15pt;
+    font-weight: bold;
+    color: {texto};
 }}
 
 /* ----------------------------------------------------------------- avisos */
@@ -290,6 +350,12 @@ QStatusBar::item {{
     rotulo_campo=ROTULO_CAMPO,
     valor_campo=VALOR_CAMPO,
     pagina_login=PAGINA_LOGIN,
+    cartao_dispositivo=CARTAO_DISPOSITIVO,
+    titulo_seccao=TITULO_SECCAO,
+    barra_capacidade=BARRA_CAPACIDADE,
+    nome_do_cartao=NOME_DO_CARTAO,
+    detalhe_do_cartao=DETALHE_DO_CARTAO,
+    marca=MARCA,
     botao_primario=BOTAO_PRIMARIO,
     botao_secundario=BOTAO_SECUNDARIO,
     **CORES,

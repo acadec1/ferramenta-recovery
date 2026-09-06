@@ -16,9 +16,13 @@ py -3.11 -m venv .venv
 pip install -r requirements.txt
 ```
 
-No Windows, o `pytsk3` costuma exigir compilação (Visual C++ Build Tools). Só é
+No Windows o `pytsk3` instala-se a partir de wheel (cp311), sem compilador. Só é
 necessário para o varrimento do sistema de ficheiros — o carving, a verificação de
 integridade, a auditoria e os relatórios funcionam sem ele.
+
+**Privilégios:** o Windows recusa a leitura de disco em bruto sem elevação. A
+aplicação deteta esse caso, explica-o em vez de mostrar o erro cru da biblioteca, e
+oferece o botão **Reiniciar como Administrador**, que relança o processo pelo UAC.
 
 ## Estrutura
 
@@ -34,14 +38,17 @@ src/
   report.py             Relatório PDF (ReportLab)
   gui/main_window.py    Janela única: barra lateral, painéis e orquestração
   gui/theme.py          Tema visual (claro institucional)
-  gui/widgets.py        Componentes partilhados (banner, painel de detalhes)
+  gui/icons.py          Ícones SVG desenhados no próprio código
+  gui/widgets.py        Componentes partilhados (cartões, banner, detalhes)
   gui/pages/login.py    Autenticação
   gui/pages/devices.py  Discos físicos e volumes lógicos
   gui/pages/results.py  Ficheiros apagados e recuperação
   gui/pages/carving.py  Carving por assinatura
   gui/pages/audit.py    Cadeia de custódia e relatório
   gui/pages/accounts.py Contas de acesso (só administrador)
-tests/                  Testes unitários (unittest, com mocks de pytsk3/hardware)
+tests/                  Testes unitários (mocks de pytsk3/hardware)
+tests/test_integracao.py  Teste com pytsk3 real sobre uma imagem FAT16 gerada
+tests/fat16.py            Construtor dessa imagem (ficheiro apagado incluído)
 ```
 
 ## Execução
@@ -63,13 +70,13 @@ excepções são os selectores de pasta e de ficheiro do próprio Windows).
 +--------------------------------------------------------------+
 | FRDA                             admin • administrador  [Sair]|
 +----------------------+---------------------------------------+
-| Recuperação de dados | Dispositivos de armazenamento         |
-|  > Dispositivos      | +-----------------------------+ +-----+|
-|    Ficheiros apagados| | Disco físico 0    465.8 GB  | |Deta-||
-|    Carving           | |   Dados (D:)  NTFS 465.7 GB | |lhes ||
-| Ferramentas          | | Disco físico 1    119.2 GB  | |[Pro-||
-|    Cadeia de custódia| |   Volume (C:) NTFS 117.7 GB | |curar]||
-|    Contas de acesso  | +-----------------------------+ +-----+|
+| Recuperação de dados | Escolha um local para iniciar a rec.  |
+|  > Dispositivos      | Discos físicos (2)                    |
+|    Ficheiros apagados| [#] Disco 0    [#] Disco 1     +-----+|
+|    Carving           | Volumes locais (2)             |Deta-||
+| Ferramentas          | [#] C: ####--- [#] D: ##-----  |lhes ||
+|    Cadeia de custódia| Unidades externas (1)          |[Pro-||
+|    Contas de acesso  | [#] SD Card (G:)  Acesso rápido|curar]||
 +----------------------+---------------------------------------+
 | mensagem                    Sem privilégios de Administrador  |
 +--------------------------------------------------------------+
@@ -120,10 +127,16 @@ py -3.11 -m unittest discover -s tests -t . -v      # suite completa
 py -3.11 -m unittest tests.test_carving -v          # um módulo isolado
 ```
 
-190 testes. Usam mocks de `pytsk3` e do `kernel32`, e imagens de disco sintéticas
-criadas em ficheiros temporários — nenhum dispositivo físico é tocado. Os testes da
-GUI correm com Qt em modo *offscreen* e ficam em `skipped` se o PySide6 não estiver
-instalado; os de `report.py` ficam em `skipped` sem o ReportLab.
+223 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
+sintéticas criadas em ficheiros temporários — nenhum dispositivo físico é tocado. Os
+testes da GUI correm com Qt em modo *offscreen* e ficam em `skipped` se o PySide6 não
+estiver instalado; os de `report.py` ficam em `skipped` sem o ReportLab.
+
+`tests/test_integracao.py` é a excepção e não usa mocks: constrói uma imagem **FAT16
+real** com um ficheiro apagado (nome marcado com `0xE5` e cadeia da FAT libertada) e
+corre o `pytsk3` verdadeiro — varrimento, reconstrução a partir dos clusters, carving
+e SHA-256 — sem hardware nem elevação. Foi este teste que apanhou constantes do
+Sleuth Kit com valores errados que os mocks não detetavam.
 
 ### 2. Teste funcional sobre uma imagem de disco (sem privilégios)
 

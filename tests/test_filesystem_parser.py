@@ -6,8 +6,9 @@ from unittest import mock
 
 from src import filesystem_parser
 
-# Valores reais das constantes do Sleuth Kit usados pelo modulo.
-TSK_VS_PART_FLAG_ALLOC = 0x02
+# Valores reais das constantes do Sleuth Kit (verificados contra o pytsk3
+# instalado em tests/test_integracao.py).
+TSK_VS_PART_FLAG_ALLOC = 0x01
 TSK_FS_NAME_FLAG_ALLOC = 0x01
 TSK_FS_NAME_FLAG_UNALLOC = 0x02
 TSK_FS_META_FLAG_ALLOC = 0x01
@@ -16,10 +17,10 @@ TSK_FS_META_TYPE_REG = 0x01
 TSK_FS_META_TYPE_DIR = 0x02
 TSK_FS_ATTR_TYPE_DEFAULT = 0x01
 TSK_FS_ATTR_TYPE_NTFS_DATA = 0x80
-TSK_FS_ATTR_FLAG_RES = 0x01
-TSK_FS_ATTR_FLAG_NONRES = 0x02
-TSK_FS_ATTR_RUN_FLAG_FILLER = 0x02
-TSK_FS_ATTR_RUN_FLAG_SPARSE = 0x04
+TSK_FS_ATTR_RES = 0x04
+TSK_FS_ATTR_NONRES = 0x02
+TSK_FS_ATTR_RUN_FLAG_FILLER = 0x01
+TSK_FS_ATTR_RUN_FLAG_SPARSE = 0x02
 
 
 class FakeRun:
@@ -31,7 +32,7 @@ class FakeRun:
 
 class FakeAttribute:
     def __init__(self, runs, attr_type=TSK_FS_ATTR_TYPE_NTFS_DATA, name=None,
-                 flags=TSK_FS_ATTR_FLAG_NONRES):
+                 flags=TSK_FS_ATTR_NONRES):
         self.info = types.SimpleNamespace(type=attr_type, name=name, flags=flags)
         self._runs = runs
 
@@ -115,7 +116,7 @@ def build_fake_pytsk3(root=None, parts=None, volume_error=False, fs_error=False,
         TSK_FS_META_TYPE_DIR=TSK_FS_META_TYPE_DIR,
         TSK_FS_ATTR_TYPE_DEFAULT=TSK_FS_ATTR_TYPE_DEFAULT,
         TSK_FS_ATTR_TYPE_NTFS_DATA=TSK_FS_ATTR_TYPE_NTFS_DATA,
-        TSK_FS_ATTR_FLAG_RES=TSK_FS_ATTR_FLAG_RES,
+        TSK_FS_ATTR_RES=TSK_FS_ATTR_RES,
         TSK_FS_ATTR_RUN_FLAG_FILLER=TSK_FS_ATTR_RUN_FLAG_FILLER,
         TSK_FS_ATTR_RUN_FLAG_SPARSE=TSK_FS_ATTR_RUN_FLAG_SPARSE,
     )
@@ -211,7 +212,7 @@ class FilesystemParserTest(unittest.TestCase):
         self.assertEqual(entry["runs"], [{"block": 10, "count": 1}])
 
     def test_atributo_residente_e_fluxos_alternativos(self):
-        residente = FakeAttribute([], flags=TSK_FS_ATTR_FLAG_RES)
+        residente = FakeAttribute([], flags=TSK_FS_ATTR_RES)
         ads = FakeAttribute([FakeRun(900, 5)], name=b"Zone.Identifier")
         root = FakeDirectory(
             [FakeFile("nota.txt", deleted=True, size=64, inode=11,
@@ -265,6 +266,19 @@ class FilesystemParserTest(unittest.TestCase):
         root = FakeDirectory([ciclo])
         entries = self._scan(build_fake_pytsk3(root=root, parts=[FakePart(0, 100)]))
         self.assertEqual([e["path"] for e in entries], ["/Loop/dentro.txt"])
+
+    def test_constantes_em_falta_usam_a_alternativa_documentada(self):
+        """Ha versoes do pytsk3 que nao exportam todos os nomes."""
+        residente = FakeAttribute([], flags=TSK_FS_ATTR_RES)
+        root = FakeDirectory([FakeFile("nota.txt", deleted=True, size=64, inode=11,
+                                       attributes=[residente])])
+        fake = build_fake_pytsk3(root=root, parts=[FakePart(0, 100)])
+        del fake.TSK_FS_ATTR_RES  # a biblioteca nao exporta este nome
+
+        entry = self._scan(fake)[0]
+
+        self.assertTrue(entry["resident"])
+        self.assertEqual(filesystem_parser.CONSTANTES_TSK["TSK_FS_ATTR_RES"], 4)
 
     def test_sem_pytsk3_instalado(self):
         with mock.patch.object(filesystem_parser, "pytsk3", None):

@@ -177,6 +177,46 @@ class DeviceReaderTest(unittest.TestCase):
         self.assertIsInstance(device_reader.is_admin(), bool)
 
 
+class ElevacaoTest(unittest.TestCase):
+    """Relancamento com privilegios de Administrador (ShellExecuteW 'runas')."""
+
+    def _patch_shell32(self, resultado, admin=False):
+        fake = mock.Mock()
+        fake.IsUserAnAdmin.return_value = 1 if admin else 0
+        fake.ShellExecuteW.return_value = resultado
+        patcher = mock.patch.object(device_reader, "_get_shell32", return_value=fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return fake
+
+    def test_relanca_com_elevacao(self):
+        fake = self._patch_shell32(42)
+        self.assertTrue(device_reader.relaunch_as_admin())
+        argumentos = fake.ShellExecuteW.call_args[0]
+        self.assertEqual(argumentos[1], "runas")
+        self.assertTrue(argumentos[2].endswith("python.exe")
+                        or argumentos[2].endswith("pythonw.exe"))
+
+    def test_elevacao_recusada_pelo_utilizador(self):
+        self._patch_shell32(5)  # SE_ERR_ACCESSDENIED
+        self.assertFalse(device_reader.relaunch_as_admin())
+
+    def test_nao_relanca_se_ja_for_administrador(self):
+        fake = self._patch_shell32(42, admin=True)
+        self.assertFalse(device_reader.relaunch_as_admin())
+        fake.ShellExecuteW.assert_not_called()
+
+    def test_erro_do_shell_nao_rebenta(self):
+        fake = self._patch_shell32(42)
+        fake.ShellExecuteW.side_effect = OSError("sem shell")
+        self.assertFalse(device_reader.relaunch_as_admin())
+
+    def test_argumentos_repetem_o_arranque_por_modulo(self):
+        with mock.patch.object(device_reader.sys, "argv", ["x.py", "--teste"]):
+            argumentos = device_reader._argumentos_de_relancamento()
+        self.assertIn("--teste", argumentos)
+
+
 class VolumesLogicosTest(unittest.TestCase):
     def _patch(self, fake):
         patcher = mock.patch.object(device_reader, "_get_kernel32", return_value=fake)
