@@ -81,6 +81,7 @@ MENU = (
 )
 
 FILTRO_DE_IMAGENS = "Imagens de disco (*.dd *.img *.raw *.bin);;Todos os ficheiros (*)"
+ARGUMENTO_SEM_ELEVACAO = "--sem-elevacao"
 ELEVACAO_RECUSADA = (
     "A elevacao foi recusada. Sem privilegios de Administrador o Windows nao "
     "deixa ler o disco em bruto."
@@ -551,7 +552,21 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    """Arranca a aplicacao, pedindo elevacao antes de mostrar qualquer janela.
+
+    O Windows nao permite elevar um processo ja em execucao: o UAC so concede
+    privilegios a um processo novo. Por isso o pedido e feito logo no arranque,
+    antes de existir interface — se o utilizador aceitar, quem continua e o
+    processo elevado e este termina de imediato, sem que se veja um reinicio.
+    Se recusar, a aplicacao abre na mesma, em modo limitado e com o aviso na
+    barra de estado. ``--sem-elevacao`` salta o pedido.
+    """
+    argumentos = list(sys.argv[1:] if argv is None else argv)
+    if ARGUMENTO_SEM_ELEVACAO not in argumentos:
+        if device_reader.relaunch_as_admin():
+            return 0
+
     aplicacao = QApplication(sys.argv)
     theme.apply_theme(aplicacao)
 

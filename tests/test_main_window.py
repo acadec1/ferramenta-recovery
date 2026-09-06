@@ -469,6 +469,44 @@ class RelatorioTest(JanelaBase):
         self.assertEqual(self._accoes(), ["scan"])
 
 
+class ArranqueTest(JanelaBase):
+    """A elevacao e pedida no arranque, antes de existir qualquer janela."""
+
+    def _patch_arranque(self):
+        aplicacao = self._patch("QApplication")
+        aplicacao.return_value.exec.return_value = 0
+        self._patch("AuthStore")
+        self._patch("MainWindow")
+        return aplicacao
+
+    def test_pede_elevacao_antes_de_abrir_a_janela(self):
+        relancar = self._patch("device_reader.relaunch_as_admin", return_value=True)
+        aplicacao = self._patch_arranque()
+
+        self.assertEqual(main_window.main([]), 0)
+
+        relancar.assert_called_once_with()
+        aplicacao.assert_not_called()  # nenhuma janela chegou a ser criada
+
+    def test_abre_em_modo_limitado_se_a_elevacao_for_recusada(self):
+        self._patch("device_reader.relaunch_as_admin", return_value=False)
+        aplicacao = self._patch_arranque()
+
+        main_window.main([])
+
+        aplicacao.assert_called_once()
+        aplicacao.return_value.exec.assert_called_once_with()
+
+    def test_argumento_salta_o_pedido_de_elevacao(self):
+        relancar = self._patch("device_reader.relaunch_as_admin")
+        aplicacao = self._patch_arranque()
+
+        main_window.main([main_window.ARGUMENTO_SEM_ELEVACAO])
+
+        relancar.assert_not_called()
+        aplicacao.assert_called_once()
+
+
 class ElevacaoTest(JanelaBase):
     def test_botao_visivel_sem_privilegios(self):
         janela = self._janela(ADMIN)

@@ -20,9 +20,17 @@ No Windows o `pytsk3` instala-se a partir de wheel (cp311), sem compilador. Só 
 necessário para o varrimento do sistema de ficheiros — o carving, a verificação de
 integridade, a auditoria e os relatórios funcionam sem ele.
 
-**Privilégios:** o Windows recusa a leitura de disco em bruto sem elevação. A
-aplicação deteta esse caso, explica-o em vez de mostrar o erro cru da biblioteca, e
-oferece o botão **Reiniciar como Administrador**, que relança o processo pelo UAC.
+**Privilégios:** o Windows recusa a leitura de disco em bruto sem elevação, e não
+permite elevar um processo já em execução — o UAC só concede privilégios a um
+processo novo. Por isso a aplicação pede a elevação **no arranque, antes de mostrar
+qualquer janela**: aceita-se o UAC e a aplicação abre já com privilégios, sem
+reinício visível. Se o pedido for recusado, a aplicação abre à mesma em modo
+limitado, com o aviso na barra de estado e o botão **Reiniciar como Administrador**
+para pedir de novo. Para arrancar sem o pedido:
+
+```
+py -3.11 -m src.gui.main_window --sem-elevacao
+```
 
 ## Estrutura
 
@@ -127,7 +135,7 @@ py -3.11 -m unittest discover -s tests -t . -v      # suite completa
 py -3.11 -m unittest tests.test_carving -v          # um módulo isolado
 ```
 
-223 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
+226 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
 sintéticas criadas em ficheiros temporários — nenhum dispositivo físico é tocado. Os
 testes da GUI correm com Qt em modo *offscreen* e ficam em `skipped` se o PySide6 não
 estiver instalado; os de `report.py` ficam em `skipped` sem o ReportLab.
