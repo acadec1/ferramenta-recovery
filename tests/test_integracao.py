@@ -10,6 +10,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from src import carving, filesystem_parser, integrity, recovery
 from tests.fat16 import construir_imagem
@@ -27,6 +28,11 @@ class VarrimentoRealTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
+        # o FAT16 declara mais de um milhao de registos possiveis; nos testes
+        # basta varrer os primeiros para exercitar o percurso completo
+        patcher = mock.patch.object(filesystem_parser, "MAX_REGISTOS", 20_000)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.imagem = construir_imagem(
             os.path.join(self.tmp, "prova.dd"), CONTEUDO_APAGADO
         )
@@ -79,6 +85,19 @@ class VarrimentoRealTest(unittest.TestCase):
             filesystem_parser.scan_deleted_entries(
                 os.path.join(self.tmp, "nao_existe.dd")
             )
+
+    def test_diagnostico_do_varrimento(self):
+        diagnostico = {}
+        filesystem_parser.scan_deleted_entries(self.imagem, diagnostico)
+        self.assertEqual(diagnostico["particoes"], 1)
+        self.assertEqual(diagnostico["sistemas_de_ficheiros"], 1)
+        self.assertEqual(diagnostico["registos_examinados"], 20_001)
+
+    def test_varrimento_dos_registos_nao_duplica_a_entrada(self):
+        """A entrada esta na directoria e tambem na MFT: conta uma so vez."""
+        entradas = filesystem_parser.scan_deleted_entries(self.imagem)
+        inodes = [e["inode"] for e in entradas]
+        self.assertEqual(len(inodes), len(set(inodes)))
 
     def test_constantes_do_tsk_coincidem_com_a_biblioteca(self):
         """As alternativas documentadas tem de bater certo com o pytsk3 real."""

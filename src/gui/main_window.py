@@ -371,9 +371,10 @@ class MainWindow(QMainWindow):
             self.notificar("Seleccione um dispositivo.", "aviso")
             return
 
+        diagnostico: dict = {}
         QGuiApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            entradas = filesystem_parser.scan_deleted_entries(device_path)
+            entradas = filesystem_parser.scan_deleted_entries(device_path, diagnostico)
         except PermissionError as erro:
             self.notificar(str(erro), "erro")
             self.botao_elevar.setVisible(True)
@@ -388,9 +389,37 @@ class MainWindow(QMainWindow):
         self.results_page.mostrar_entradas(entradas, device_path)
         self.registar_evento(device_path=device_path, action=ACTION_SCAN)
         self.ir_para("resultados")
-        self.notificar(
-            "%d entradas apagadas encontradas em %s." % (len(entradas), device_path),
-            "sucesso" if entradas else "info",
+        self.notificar(*self._resumo_do_varrimento(device_path, entradas, diagnostico))
+
+    @staticmethod
+    def _resumo_do_varrimento(device_path: str, entradas: list,
+                              diagnostico: dict) -> tuple:
+        """Mensagem do varrimento: o que foi encontrado e o que foi analisado."""
+        if entradas:
+            return (
+                "%d entradas apagadas encontradas em %s."
+                % (len(entradas), device_path),
+                "sucesso",
+            )
+        if not diagnostico.get("sistemas_de_ficheiros"):
+            return (
+                "Nenhum sistema de ficheiros reconhecido em %s (%d particoes). "
+                "O disco pode estar encriptado ou usar um formato nao suportado."
+                % (device_path, diagnostico.get("particoes", 0)),
+                "aviso",
+            )
+        return (
+            "Nenhuma entrada apagada em %s: %d %s analisados (%s), %d registos "
+            "examinados." % (
+                device_path,
+                diagnostico["sistemas_de_ficheiros"],
+                "sistema de ficheiros"
+                if diagnostico["sistemas_de_ficheiros"] == 1
+                else "sistemas de ficheiros",
+                ", ".join(diagnostico.get("tipos") or ["?"]),
+                diagnostico.get("registos_examinados", 0),
+            ),
+            "info",
         )
 
     def recuperar(self, entradas: list[dict]) -> None:

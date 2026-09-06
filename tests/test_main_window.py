@@ -275,7 +275,7 @@ class VarrimentoTest(JanelaBase):
 
         janela.devices_page.painel.botao_accao.click()
 
-        scan.assert_called_once_with(r"\\.\PhysicalDrive1")
+        self.assertEqual(scan.call_args[0][0], r"\\.\PhysicalDrive1")
 
     def test_varrimento_falhado(self):
         janela = self._janela(ADMIN)
@@ -295,6 +295,42 @@ class VarrimentoTest(JanelaBase):
         janela.varrer("")
         scan.assert_not_called()
         self.assertEqual(janela.banner.property("tipo"), "aviso")
+
+
+class ResumoDoVarrimentoTest(JanelaBase):
+    """A mensagem distingue 'nada apagado' de 'nao foi possivel ler'."""
+
+    def _varrer(self, entradas, diagnostico):
+        janela = self._janela(ADMIN)
+
+        def scan(device_path, saida=None):
+            if saida is not None:
+                saida.update(diagnostico)
+            return list(entradas)
+
+        self._patch("filesystem_parser.scan_deleted_entries", side_effect=scan)
+        janela.varrer(DISPOSITIVO)
+        return janela
+
+    def test_com_entradas(self):
+        janela = self._varrer(ENTRADAS, {"particoes": 1, "sistemas_de_ficheiros": 1,
+                                         "tipos": ["NTFS"], "registos_examinados": 10})
+        self.assertEqual(janela.banner.property("tipo"), "sucesso")
+        self.assertIn("2 entradas apagadas", janela.banner.text())
+
+    def test_sem_entradas_mas_com_filesystem_lido(self):
+        janela = self._varrer([], {"particoes": 1, "sistemas_de_ficheiros": 1,
+                                   "tipos": ["NTFS"], "registos_examinados": 500000})
+        self.assertEqual(janela.banner.property("tipo"), "info")
+        self.assertIn("NTFS", janela.banner.text())
+        self.assertIn("500000 registos", janela.banner.text())
+
+    def test_sem_filesystem_reconhecido(self):
+        janela = self._varrer([], {"particoes": 2, "sistemas_de_ficheiros": 0,
+                                   "tipos": [], "registos_examinados": 0})
+        self.assertEqual(janela.banner.property("tipo"), "aviso")
+        self.assertIn("Nenhum sistema de ficheiros", janela.banner.text())
+        self.assertIn("2 particoes", janela.banner.text())
 
 
 class RecuperacaoTest(JanelaBase):
@@ -580,7 +616,7 @@ class ImagemDeDiscoTest(JanelaBase):
         janela.escolher_imagem()
         janela.devices_page.painel.botao_accao.click()
 
-        scan.assert_called_once_with(caminho)
+        self.assertEqual(scan.call_args[0][0], caminho)
 
 
 class EstadoTest(JanelaBase):

@@ -39,6 +39,7 @@ src/
   auth.py               Contas, perfis de acesso e autenticação (PBKDF2-SHA256)
   device_reader.py      Enumeração de discos físicos (\\.\PhysicalDriveN)
   filesystem_parser.py  Varrimento de entradas apagadas via pytsk3
+                        (directorias + $OrphanFiles + registos da MFT)
   recovery.py           Reconstrução de ficheiros a partir dos clusters/sectores
   carving.py            Carving por assinatura binária (JPEG, PDF, DOCX)
   integrity.py          Hash SHA-256 e verificação de integridade
@@ -103,6 +104,31 @@ primeira execução:
 | `admin`    | `admin123`    | administrador |
 | `operador` | `operador123` | operador      |
 
+## Como o varrimento encontra os ficheiros
+
+Apagar um ficheiro não apaga os dados: liberta o espaço e marca os metadados como
+não alocados. O que muda entre sistemas de ficheiros é *onde* fica esse rasto, e
+por isso o varrimento combina três fontes:
+
+1. **Entradas de directoria** — em FAT/exFAT a entrada permanece com o primeiro
+   byte do nome substituído por `0xE5`. É aqui que aparecem quase todos os
+   apagados numa pen ou cartão de memória.
+2. **`$OrphanFiles`** — a directoria virtual onde o Sleuth Kit reúne os ficheiros
+   cujo registo sobreviveu mas já não tem entrada de directoria, com o nome
+   recuperado dos metadados.
+3. **Registos não alocados (MFT)** — em NTFS a eliminação retira a entrada do
+   índice da directoria e marca o registo da MFT como livre. Um percurso pelas
+   directorias não os encontra; é preciso percorrer os registos. Sem nome
+   recuperável, a entrada aparece como `registo_<número>`.
+
+As repetições são eliminadas pelo número de inode, e cada entrada traz o campo
+`origem` (`directorio` ou `registo`). O varrimento de registos está limitado a
+`MAX_REGISTOS` (500 000 por partição) para não ser ilimitado em discos grandes.
+
+Quando não encontra nada, a aplicação diz porquê: quantas partições viu, quantos
+sistemas de ficheiros conseguiu abrir e quantos registos examinou — o que
+distingue "não há nada apagado" de "não consegui ler este disco".
+
 ## Contas e perfis de acesso
 
 | Ação                  | administrador | operador |
@@ -135,7 +161,7 @@ py -3.11 -m unittest discover -s tests -t . -v      # suite completa
 py -3.11 -m unittest tests.test_carving -v          # um módulo isolado
 ```
 
-226 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
+238 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
 sintéticas criadas em ficheiros temporários — nenhum dispositivo físico é tocado. Os
 testes da GUI correm com Qt em modo *offscreen* e ficam em `skipped` se o PySide6 não
 estiver instalado; os de `report.py` ficam em `skipped` sem o ReportLab.

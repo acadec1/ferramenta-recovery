@@ -85,17 +85,38 @@ class FakeDirectory:
 
 
 class FakeFSInfo:
+    """Sistema de ficheiros simulado, com directorias e registos de metadados.
+
+    ``registos`` e o equivalente a MFT: {inode: FakeFile}. ``orfaos`` sao as
+    entradas que o TSK poe na directoria virtual $OrphanFiles.
+    """
+
     def __init__(self, image, offset=0, root=None, ftype="TSK_FS_TYPE_NTFS",
-                 block_size=4096, dev_bsize=512):
+                 block_size=4096, dev_bsize=512, registos=None, orfaos=None,
+                 first_inum=0, last_inum=None):
         self.image = image
         self.offset = offset
+        self.registos = dict(registos or {})
+        self.orfaos = list(orfaos or [])
+        if last_inum is None:
+            last_inum = max(self.registos) if self.registos else -1
         self.info = types.SimpleNamespace(
-            ftype=ftype, block_size=block_size, dev_bsize=dev_bsize
+            ftype=ftype, block_size=block_size, dev_bsize=dev_bsize,
+            first_inum=first_inum, last_inum=last_inum,
         )
         self._root = root or FakeDirectory([])
 
     def open_dir(self, path="/"):
+        if path == filesystem_parser.CAMINHO_DOS_ORFAOS:
+            if not self.orfaos:
+                raise IOError("sem ficheiros orfaos")
+            return FakeDirectory(self.orfaos)
         return self._root
+
+    def open_meta(self, inode=0):
+        if inode not in self.registos:
+            raise IOError("registo %d por usar" % inode)
+        return self.registos[inode]
 
 
 class FakePart:
@@ -279,6 +300,96 @@ class FilesystemParserTest(unittest.TestCase):
 
         self.assertTrue(entry["resident"])
         self.assertEqual(filesystem_parser.CONSTANTES_TSK["TSK_FS_ATTR_RES"], 4)
+
+    def test_varre_os_registos_nao_alocados(self):
+        """Em NTFS os apagados nao estao nas directorias, estao na MFT."""
+        root = FakeDirectory([FakeFile("activo.txt", size=10, inode=5,
+                                       runs=[FakeRun(1, 1)])])
+        registos = {
+            5: FakeFile("activo.txt", size=10, inode=5, runs=[FakeRun(1, 1)]),
+            7: FakeFile("", deleted=True, size=2048, inode=7, runs=[FakeRun(90, 2)]),
+            9: FakeFile("", deleted=True, size=4096, inode=9, runs=[FakeRun(95, 1)]),
+        }
+        fake = build_fake_pytsk3(root=root, parts=[FakePart(0, 1000)],
+                                 registos=registos)
+        entradas = self._scan(fake)
+
+        self.assertEqual(len(entradas), 2)
+        self.assertEqual([e["inode"] for e in entradas], [7, 9])
+        self.assertEqual(entradas[0]["name"], "registo_7")  # sem nome recuperavel
+        self.assertEqual(entradas[0]["path"], filesystem_parser.SEM_CAMINHO)
+        self.assertEqual(entradas[0]["origem"], filesystem_parser.ORIGEM_REGISTO)
+        self.assertEqual(entradas[0]["runs"], [{"block": 90, "count": 2}])
+
+    def test_registos_alocados_directorias_e_vazios_sao_ignorados(self):
+        registos = {
+            1: FakeFile("activo.txt", size=10, inode=1),  # alocado
+            2: FakeFile("", deleted=True, size=0, inode=2),  # sem conteudo
+            3: FakeFile("pasta", deleted=True, size=100, inode=3, is_dir=True),
+            4: FakeFile("", deleted=True, size=50, inode=4, runs=[FakeRun(7, 1)]),
+        }
+        fake = build_fake_pytsk3(parts=[FakePart(0, 1000)], registos=registos)
+        entradas = self._scan(fake)
+        self.assertEqual([e["inode"] for e in entradas], [4])
+
+    def test_entrada_de_directorio_nao_se_repete_no_varrimento(self):
+        apagado = FakeFile("apagado.docx", deleted=True, size=15000, inode=42,
+                           runs=[FakeRun(100, 2)])
+        root = FakeDirectory([apagado])
+        fake = build_fake_pytsk3(root=root, parts=[FakePart(0, 1000)],
+                                 registos={42: apagado})
+        entradas = self._scan(fake)
+
+        self.assertEqual(len(entradas), 1)
+        self.assertEqual(entradas[0]["name"], "apagado.docx")
+        self.assertEqual(entradas[0]["origem"], filesystem_parser.ORIGEM_DIRECTORIO)
+
+    def test_ficheiros_orfaos_trazem_o_nome(self):
+        orfao = FakeFile("foto_apagada.jpg", deleted=True, size=4096, inode=77,
+                         runs=[FakeRun(300, 1)])
+        fake = build_fake_pytsk3(parts=[FakePart(0, 1000)], orfaos=[orfao],
+                                 registos={77: orfao})
+        entradas = self._scan(fake)
+
+        self.assertEqual(len(entradas), 1)
+        self.assertEqual(entradas[0]["name"], "foto_apagada.jpg")
+        self.assertIn("$OrphanFiles", entradas[0]["path"])
+        self.assertEqual(entradas[0]["origem"], filesystem_parser.ORIGEM_DIRECTORIO)
+
+    def test_limite_de_registos_examinados(self):
+        fake = build_fake_pytsk3(parts=[FakePart(0, 1000)], registos={},
+                                 last_inum=10_000_000)
+        with mock.patch.object(filesystem_parser, "MAX_REGISTOS", 50):
+            diagnostico = {}
+            with mock.patch.object(filesystem_parser, "pytsk3", fake):
+                filesystem_parser.scan_deleted_entries(r"\\.\PhysicalDrive0",
+                                                       diagnostico)
+        self.assertEqual(diagnostico["registos_examinados"], 51)
+
+    def test_diagnostico_do_varrimento(self):
+        root = FakeDirectory([FakeFile("x.txt", deleted=True, inode=3,
+                                       runs=[FakeRun(1, 1)])])
+        fake = build_fake_pytsk3(root=root, parts=[FakePart(0, 1000)],
+                                 registos={3: FakeFile("x.txt", deleted=True, inode=3)})
+        diagnostico = {}
+        with mock.patch.object(filesystem_parser, "pytsk3", fake):
+            filesystem_parser.scan_deleted_entries(r"\\.\PhysicalDrive0", diagnostico)
+
+        self.assertEqual(diagnostico["particoes"], 1)
+        self.assertEqual(diagnostico["sistemas_de_ficheiros"], 1)
+        self.assertEqual(diagnostico["tipos"], ["TSK_FS_TYPE_NTFS"])
+        self.assertGreaterEqual(diagnostico["registos_examinados"], 1)
+
+    def test_diagnostico_quando_nenhum_filesystem_abre(self):
+        fake = build_fake_pytsk3(parts=[FakePart(2048, 1000)], fs_error=True)
+        diagnostico = {}
+        with mock.patch.object(filesystem_parser, "pytsk3", fake):
+            entradas = filesystem_parser.scan_deleted_entries(
+                r"\\.\PhysicalDrive0", diagnostico
+            )
+        self.assertEqual(entradas, [])
+        self.assertEqual(diagnostico["particoes"], 1)
+        self.assertEqual(diagnostico["sistemas_de_ficheiros"], 0)
 
     def test_sem_pytsk3_instalado(self):
         with mock.patch.object(filesystem_parser, "pytsk3", None):
