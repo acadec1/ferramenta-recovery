@@ -32,10 +32,15 @@ src/
   integrity.py          Hash SHA-256 e verificação de integridade
   audit_log.py          Registo de auditoria / cadeia de custódia (sqlite3)
   report.py             Relatório PDF (ReportLab)
-  gui/main_window.py    Interface PySide6
-  gui/login_dialog.py   Ecrã de autenticação
-  gui/account_dialog.py Criação de contas (só administrador)
+  gui/main_window.py    Janela única: barra lateral, painéis e orquestração
   gui/theme.py          Tema visual (claro institucional)
+  gui/widgets.py        Componentes partilhados (banner, painel de detalhes)
+  gui/pages/login.py    Autenticação
+  gui/pages/devices.py  Discos físicos e volumes lógicos
+  gui/pages/results.py  Ficheiros apagados e recuperação
+  gui/pages/carving.py  Carving por assinatura
+  gui/pages/audit.py    Cadeia de custódia e relatório
+  gui/pages/accounts.py Contas de acesso (só administrador)
 tests/                  Testes unitários (unittest, com mocks de pytsk3/hardware)
 ```
 
@@ -46,6 +51,34 @@ py -3.11 -m src.gui.main_window
 ```
 
 Executar a partir de uma consola elevada (Administrador) para acesso a disco bruto.
+
+## Interface
+
+Aplicação de desktop numa **janela única**: a autenticação, os dispositivos, os
+ficheiros apagados, o carving, a cadeia de custódia e as contas são painéis que se
+substituem no mesmo espaço — não há diálogos nem janelas secundárias (as únicas
+excepções são os selectores de pasta e de ficheiro do próprio Windows).
+
+```
++--------------------------------------------------------------+
+| FRDA                             admin • administrador  [Sair]|
++----------------------+---------------------------------------+
+| Recuperação de dados | Dispositivos de armazenamento         |
+|  > Dispositivos      | +-----------------------------+ +-----+|
+|    Ficheiros apagados| | Disco físico 0    465.8 GB  | |Deta-||
+|    Carving           | |   Dados (D:)  NTFS 465.7 GB | |lhes ||
+| Ferramentas          | | Disco físico 1    119.2 GB  | |[Pro-||
+|    Cadeia de custódia| |   Volume (C:) NTFS 117.7 GB | |curar]||
+|    Contas de acesso  | +-----------------------------+ +-----+|
++----------------------+---------------------------------------+
+| mensagem                    Sem privilégios de Administrador  |
++--------------------------------------------------------------+
+```
+
+Barra lateral com as secções, tabela central com os dados e painel de detalhes à
+direita com a acção principal. Os avisos aparecem numa faixa colorida no topo do
+painel (verde para sucesso, âmbar para aviso, vermelho para erro), e a barra de
+estado mostra permanentemente se a aplicação tem privilégios de Administrador.
 
 Ao arrancar, a aplicação pede autenticação. As contas iniciais são criadas na
 primeira execução:
@@ -61,11 +94,13 @@ primeira execução:
 |-----------------------|:-------------:|:--------:|
 | Escanear              | sim           | sim      |
 | Recuperar ficheiros   | sim           | sim      |
+| Carving por assinatura| sim           | sim      |
 | Gerar relatório PDF   | sim           | não      |
 | Criar contas          | sim           | não      |
 
-O operador não vê sequer os botões de relatório e de contas. Podem criar-se mais
-contas no botão **Contas**, disponível apenas ao administrador.
+O operador não vê sequer as entradas de relatório e de contas na barra lateral
+(a secção "Ferramentas" desaparece por completo). Podem criar-se mais
+contas no painel **Contas de acesso**, disponível apenas ao administrador.
 
 As passwords são guardadas com PBKDF2-HMAC-SHA256 (200 000 iterações e salt
 aleatório por conta) na tabela `users` do ficheiro `frda_audit.db` — nunca em
@@ -85,7 +120,7 @@ py -3.11 -m unittest discover -s tests -t . -v      # suite completa
 py -3.11 -m unittest tests.test_carving -v          # um módulo isolado
 ```
 
-157 testes. Usam mocks de `pytsk3` e do `kernel32`, e imagens de disco sintéticas
+190 testes. Usam mocks de `pytsk3` e do `kernel32`, e imagens de disco sintéticas
 criadas em ficheiros temporários — nenhum dispositivo físico é tocado. Os testes da
 GUI correm com Qt em modo *offscreen* e ficam em `skipped` se o PySide6 não estiver
 instalado; os de `report.py` ficam em `skipped` sem o ReportLab.
@@ -121,12 +156,15 @@ Os dois hashes SHA-256 devem coincidir.
    Sem elevação a barra de estado mostra o aviso e o acesso a disco bruto falha.
 4. Autenticar-se com `admin` / `admin123` (o perfil `operador` chega para os passos
    5 e 6, mas não gera o relatório do passo 7).
-5. Escolher o dispositivo na combo box e carregar em **Escanear**: a tabela lista as
-   entradas apagadas com nome, tamanho e data de modificação.
-6. Selecionar as linhas e carregar em **Recuperar Selecionados**, escolhendo uma pasta
-   **noutro disco**. Regra forense: nunca gravar no dispositivo em análise.
-7. Carregar em **Gerar Relatório** para exportar o PDF com a tabela de eventos e o
-   resumo (ficheiros recuperados e verificados com sucesso).
+5. No painel **Dispositivos**, escolher o disco ou o volume na árvore e carregar em
+   **Procurar dados apagados**: a aplicação passa ao painel **Ficheiros apagados**
+   com nome, caminho original, tamanho e data de modificação.
+6. Seleccionar as linhas e carregar em **Recuperar seleccionados**, escolhendo uma
+   pasta **noutro disco**. Regra forense: nunca gravar no dispositivo em análise.
+7. Em **Cadeia de custódia**, carregar em **Gerar relatório PDF** para exportar o
+   relatório com a tabela de eventos e o resumo (ficheiros recuperados e verificados
+   com sucesso). O painel **Carving por assinatura** faz a varredura binária do mesmo
+   dispositivo, sem depender do sistema de ficheiros.
 8. Confirmar a integridade comparando o SHA-256 registado na auditoria com o do
    ficheiro recuperado:
 

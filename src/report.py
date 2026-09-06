@@ -10,7 +10,12 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from src.audit_log import ACTION_RECOVER, ACTION_VERIFY_FAILED, ACTION_VERIFY_OK
+from src.audit_log import (
+    ACTION_CARVING,
+    ACTION_RECOVER,
+    ACTION_VERIFY_FAILED,
+    ACTION_VERIFY_OK,
+)
 
 TITULO = "FRDA — Relatorio de Recuperacao de Dados"
 COLUNAS = (
@@ -25,11 +30,11 @@ COLUNAS = (
 LARGURAS = (32 * mm, 28 * mm, 22 * mm, 58 * mm, 66 * mm, 22 * mm, 22 * mm)
 
 
-def _ficheiros_por_accao(events: list[dict], action: str) -> set:
+def _ficheiros_por_accao(events: list[dict], *actions: str) -> set:
     return {
         event.get("file_path")
         for event in events
-        if event.get("action") == action and event.get("file_path")
+        if event.get("action") in actions and event.get("file_path")
     }
 
 
@@ -44,7 +49,9 @@ def summarize_events(events: list[dict]) -> dict:
         "total_eventos": len(events),
         "dispositivos": dispositivos,
         "peritos": peritos,
-        "ficheiros_recuperados": len(_ficheiros_por_accao(events, ACTION_RECOVER)),
+        "ficheiros_recuperados": len(
+            _ficheiros_por_accao(events, ACTION_RECOVER, ACTION_CARVING)
+        ),
         "verificados_com_sucesso": len(_ficheiros_por_accao(events, ACTION_VERIFY_OK)),
         "verificacoes_falhadas": len(_ficheiros_por_accao(events, ACTION_VERIFY_FAILED)),
         "primeiro_evento": timestamps[0] if timestamps else None,

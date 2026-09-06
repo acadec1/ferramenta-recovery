@@ -58,6 +58,73 @@ class FakeKernel32:
         return 1
 
 
+class FakeKernel32ComVolumes(FakeKernel32):
+    """Acrescenta ao kernel32 simulado as chamadas de volumes logicos."""
+
+    def __init__(self, sizes, volumes, mascara=None):
+        super().__init__(sizes)
+        self.volumes = volumes  # {"C": {"fs":..., "label":..., "size":..., "livre":...}}
+        self.mascara = mascara
+
+    def _letra_do_caminho(self, path):
+        if path.endswith(":\\"):
+            return path[0]
+        return path.rsplit("\\", 1)[-1].rstrip(":")
+
+    def GetLogicalDrives(self):
+        if self.mascara is not None:
+            return self.mascara
+        mascara = 0
+        for letra in self.volumes:
+            mascara |= 1 << (ord(letra) - ord("A"))
+        return mascara
+
+    def GetVolumeInformationW(self, raiz, nome, tam_nome, serie, comp, flags,
+                              sistema, tam_sistema):
+        volume = self.volumes.get(self._letra_do_caminho(raiz))
+        if volume is None or volume.get("erro"):
+            return 0
+        nome.value = volume.get("label", "")
+        sistema.value = volume.get("fs", "NTFS")
+        return 1
+
+    def GetDiskFreeSpaceExW(self, raiz, disponivel, total, livre):
+        volume = self.volumes.get(self._letra_do_caminho(raiz))
+        if volume is None or volume.get("erro"):
+            return 0
+        total.contents.value = volume.get("size", 0)
+        livre.contents.value = volume.get("livre", 0)
+        disponivel.contents.value = volume.get("livre", 0)
+        return 1
+
+    def GetDriveTypeW(self, raiz):
+        volume = self.volumes.get(self._letra_do_caminho(raiz))
+        return 3 if volume is None else volume.get("tipo", 3)
+
+    def CreateFileW(self, path, access, share, sa, disposition, flags, template):
+        if "PhysicalDrive" in path:
+            return super().CreateFileW(path, access, share, sa, disposition, flags,
+                                       template)
+        letra = self._letra_do_caminho(path)
+        if letra not in self.volumes:
+            return device_reader.INVALID_HANDLE_VALUE
+        self._next_handle += 1
+        self.opened.append((self._next_handle, path, access))
+        return self._next_handle
+
+    def DeviceIoControl(self, handle, code, inbuf, insize, outbuf, outsize, ret, ovl):
+        if code != device_reader.IOCTL_STORAGE_GET_DEVICE_NUMBER:
+            return super().DeviceIoControl(handle, code, inbuf, insize, outbuf,
+                                           outsize, ret, ovl)
+        self.ioctls.append(code)
+        path = next(p for h, p, _ in self.opened if h == handle.value)
+        volume = self.volumes[self._letra_do_caminho(path)]
+        if "disco" not in volume:
+            return 0
+        ctypes.memmove(outbuf, struct.pack("<III", 7, volume["disco"], 1), 12)
+        return 1
+
+
 class DeviceReaderTest(unittest.TestCase):
     def _patch(self, fake):
         patcher = mock.patch.object(device_reader, "_get_kernel32", return_value=fake)
@@ -108,6 +175,84 @@ class DeviceReaderTest(unittest.TestCase):
 
     def test_is_admin_devolve_bool(self):
         self.assertIsInstance(device_reader.is_admin(), bool)
+
+
+class VolumesLogicosTest(unittest.TestCase):
+    def _patch(self, fake):
+        patcher = mock.patch.object(device_reader, "_get_kernel32", return_value=fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return fake
+
+    def test_lista_volumes(self):
+        self._patch(
+            FakeKernel32ComVolumes(
+                {0: 500107862016, 1: 128035676160},
+                {
+                    "C": {"fs": "NTFS", "label": "", "size": 126_400_000_000,
+                          "livre": 20_000_000_000, "disco": 1, "tipo": 3},
+                    "D": {"fs": "NTFS", "label": "Mamboza Jr.",
+                          "size": 500_000_000_000, "livre": 195_000_000_000,
+                          "disco": 0, "tipo": 3},
+                },
+            )
+        )
+        volumes = device_reader.list_logical_volumes()
+        self.assertEqual([v["letter"] for v in volumes], ["C", "D"])
+        self.assertEqual(volumes[0]["path"], r"\\.\C:")
+        self.assertEqual(volumes[0]["root"], "C:\\")
+        self.assertEqual(volumes[0]["disk_index"], 1)
+        self.assertEqual(volumes[1]["label"], "Mamboza Jr.")
+        self.assertEqual(volumes[1]["disk_index"], 0)
+        self.assertEqual(volumes[1]["filesystem"], "NTFS")
+        self.assertEqual(volumes[1]["drive_type"], "Fixo")
+        self.assertEqual(volumes[1]["size_bytes"], 500_000_000_000)
+        self.assertEqual(volumes[1]["free_bytes"], 195_000_000_000)
+
+    def test_volume_removivel_e_exfat(self):
+        self._patch(
+            FakeKernel32ComVolumes(
+                {2: 58_300_000_000},
+                {"G": {"fs": "exFAT", "label": "SD Card", "size": 58_300_000_000,
+                       "livre": 1_000, "disco": 2, "tipo": 2}},
+            )
+        )
+        volume = device_reader.list_logical_volumes()[0]
+        self.assertEqual(volume["filesystem"], "exFAT")
+        self.assertEqual(volume["drive_type"], "Removivel")
+
+    def test_volume_sem_sistema_de_ficheiros_reconhecido(self):
+        self._patch(
+            FakeKernel32ComVolumes(
+                {0: 1}, {"E": {"erro": True, "disco": 0, "tipo": 2}}
+            )
+        )
+        volume = device_reader.list_logical_volumes()[0]
+        self.assertEqual(volume["filesystem"], "RAW")
+        self.assertIsNone(volume["size_bytes"])
+        self.assertIsNone(volume["free_bytes"])
+
+    def test_volume_sem_disco_associado(self):
+        self._patch(
+            FakeKernel32ComVolumes(
+                {}, {"Z": {"fs": "NTFS", "size": 1, "livre": 1, "tipo": 4}}
+            )
+        )
+        self.assertIsNone(device_reader.list_logical_volumes()[0]["disk_index"])
+
+    def test_volume_distribuido_por_varios_discos(self):
+        fake = self._patch(
+            FakeKernel32ComVolumes(
+                {}, {"R": {"fs": "NTFS", "size": 1, "livre": 1,
+                           "disco": device_reader.NUMERO_DE_DISCO_INVALIDO}}
+            )
+        )
+        self.assertIsNone(device_reader.list_logical_volumes()[0]["disk_index"])
+        self.assertIn(device_reader.IOCTL_STORAGE_GET_DEVICE_NUMBER, fake.ioctls)
+
+    def test_sem_volumes_montados(self):
+        self._patch(FakeKernel32ComVolumes({}, {}, mascara=0))
+        self.assertEqual(device_reader.list_logical_volumes(), [])
 
 
 if __name__ == "__main__":

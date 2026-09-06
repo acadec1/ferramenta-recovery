@@ -16,6 +16,7 @@ DEFAULT_DB_PATH = "frda_audit.db"
 # Accoes registadas, partilhadas pela GUI e pelo relatorio.
 ACTION_SCAN = "scan"
 ACTION_RECOVER = "recover"
+ACTION_CARVING = "carving"
 ACTION_VERIFY_OK = "verify_ok"
 ACTION_VERIFY_FAILED = "verify_falhou"
 ACTION_REPORT = "report"

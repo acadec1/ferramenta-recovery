@@ -1,11 +1,13 @@
 """Janela principal da ferramenta (PySide6).
 
-A interface limita-se a chamar as funcoes dos modulos de src/: enumeracao de
-dispositivos, varrimento de entradas apagadas, recuperacao, calculo de hash,
-autenticacao e registo de auditoria. Nao contem logica de negocio propria.
+Toda a aplicacao vive numa unica janela: a autenticacao, a lista de
+dispositivos, os ficheiros apagados, o carving, a cadeia de custodia e as contas
+sao paineis empilhados que se substituem no mesmo espaco, sem abrir janelas
+novas. A janela limita-se a orquestrar os modulos de src/ — nao contem logica de
+negocio propria.
 
-O acesso as accoes e determinado pelo perfil da conta autenticada (ver
-src/auth.py): o administrador faz tudo, o operador so escaneia e recupera.
+O acesso a cada painel depende do perfil da conta autenticada (ver src/auth.py):
+o administrador faz tudo, o operador so escaneia e recupera.
 """
 
 from __future__ import annotations
@@ -16,26 +18,25 @@ import sys
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QApplication,
-    QComboBox,
-    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
-    QMessageBox,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from src import device_reader, filesystem_parser, integrity, recovery, report
+from src import filesystem_parser, integrity, recovery, report
+from src import carving as carving_module
+from src import device_reader
 from src.audit_log import (
+    ACTION_CARVING,
     ACTION_RECOVER,
     ACTION_REPORT,
     ACTION_SCAN,
@@ -52,129 +53,212 @@ from src.auth import (
     has_permission,
 )
 from src.gui import theme
-from src.gui.account_dialog import NovaContaDialog
-from src.gui.login_dialog import LoginDialog
+from src.gui.pages.accounts import AccountsPage
+from src.gui.pages.audit import AuditPage
+from src.gui.pages.carving import CarvingPage
+from src.gui.pages.devices import DevicesPage
+from src.gui.pages.login import LoginPage
+from src.gui.pages.results import ResultsPage
+from src.gui.widgets import Banner
 
-COLUNAS = ("Nome", "Tamanho (bytes)", "Data de modificacao")
+TITULO_JANELA = "FRDA — Ferramenta de Recuperacao de Dados Apagados"
 AVISO_ADMIN = (
-    "AVISO: sem privilegios de Administrador — o acesso a disco bruto vai falhar. "
-    "Reinicie a aplicacao a partir de uma consola elevada."
+    "Sem privilegios de Administrador: o acesso a disco bruto vai falhar. "
+    "Reinicie a partir de uma consola elevada."
 )
 ESTADO_ADMIN = "A correr como Administrador."
 SEM_PERMISSAO = "O perfil %s nao tem permissao para esta accao."
 
-
-def _formatar_tamanho(tamanho_bytes: int) -> str:
-    unidades = ("B", "KB", "MB", "GB", "TB")
-    valor = float(tamanho_bytes)
-    for unidade in unidades:
-        if valor < 1024 or unidade == unidades[-1]:
-            return "%.1f %s" % (valor, unidade)
-        valor /= 1024
-    return "%.1f %s" % (valor, unidades[-1])
+# Paineis da barra lateral: chave, rotulo, seccao e permissao necessaria.
+MENU = (
+    ("dispositivos", "Dispositivos", "Recuperacao de dados", PERMISSION_SCAN),
+    ("resultados", "Ficheiros apagados", "Recuperacao de dados", PERMISSION_RECOVER),
+    ("carving", "Carving por assinatura", "Recuperacao de dados", PERMISSION_RECOVER),
+    ("auditoria", "Cadeia de custodia", "Ferramentas", PERMISSION_REPORT),
+    ("contas", "Contas de acesso", "Ferramentas", PERMISSION_MANAGE_USERS),
+)
 
 
 class MainWindow(QMainWindow):
-    """Janela principal: dispositivos, varrimento, recuperacao e relatorio."""
+    """Janela unica com barra lateral e paineis empilhados."""
 
     def __init__(self, user: dict | None = None, audit_log: AuditLog | None = None,
                  auth_store: AuthStore | None = None):
         super().__init__()
-        self.user = user or {}
         self.audit_log = audit_log if audit_log is not None else AuditLog()
-        self.auth_store = auth_store
-        self.setWindowTitle("FRDA — Ferramenta de Recuperacao de Dados Apagados")
-        self.resize(960, 600)
+        self.auth_store = auth_store if auth_store is not None else AuthStore()
+        self.user: dict = {}
+        self.dispositivo_actual: str | None = None
 
-        self.setCentralWidget(self._construir_conteudo())
-        self._construir_barra_de_estado()
+        self.setWindowTitle(TITULO_JANELA)
+        self.resize(1120, 660)
+        self.setMinimumSize(980, 560)
 
-        self.botao_escanear.clicked.connect(self.escanear)
-        self.botao_recuperar.clicked.connect(self.recuperar_selecionados)
-        self.botao_relatorio.clicked.connect(self.gerar_relatorio)
-        self.botao_contas.clicked.connect(self.gerir_contas)
+        self.login_page = LoginPage(self.auth_store)
+        self.janela = QStackedWidget()
+        self.janela.addWidget(self.login_page)
+        self.janela.addWidget(self._construir_aplicacao())
+        self.setCentralWidget(self.janela)
 
-        self.aplicar_permissoes()
-        self.carregar_dispositivos()
+        self.etiqueta_privilegios = QLabel("")
+        self.statusBar().addPermanentWidget(self.etiqueta_privilegios)
+
+        self._ligar_sinais()
         self.avisar_privilegios()
+
+        if user:
+            self.entrar(user)
+        else:
+            self.mostrar_login()
 
     # ------------------------------------------------------------ construcao
 
-    def _construir_conteudo(self) -> QWidget:
+    def _construir_aplicacao(self) -> QWidget:
+        aplicacao = QWidget()
+        disposicao = QVBoxLayout(aplicacao)
+        disposicao.setContentsMargins(0, 0, 0, 0)
+        disposicao.setSpacing(0)
+        disposicao.addWidget(self._construir_cabecalho())
+
+        corpo = QHBoxLayout()
+        corpo.setContentsMargins(0, 0, 0, 0)
+        corpo.setSpacing(0)
+        corpo.addWidget(self._construir_barra_lateral())
+        corpo.addWidget(self._construir_conteudo(), 1)
+        disposicao.addLayout(corpo, 1)
+        return aplicacao
+
+    def _construir_cabecalho(self) -> QFrame:
         titulo = QLabel("FRDA")
-        titulo.setObjectName("tituloApp")
-        subtitulo = QLabel("Ferramenta de Recuperacao de Dados Apagados")
-        subtitulo.setObjectName("subtituloApp")
+        titulo.setObjectName(theme.TITULO_JANELA)
+        subtitulo = QLabel("Recuperacao forense de dados apagados")
+        subtitulo.setObjectName(theme.SUBTITULO)
         identificacao = QVBoxLayout()
         identificacao.setSpacing(0)
         identificacao.addWidget(titulo)
         identificacao.addWidget(subtitulo)
 
-        self.etiqueta_sessao = QLabel(self._descricao_da_sessao())
-        self.etiqueta_sessao.setObjectName("utilizadorSessao")
+        self.etiqueta_sessao = QLabel("")
+        self.etiqueta_sessao.setObjectName(theme.SUBTITULO)
+        self.botao_terminar_sessao = QPushButton("Terminar sessao")
+        self.botao_terminar_sessao.setObjectName(theme.BOTAO_SECUNDARIO)
 
-        cabecalho_conteudo = QHBoxLayout()
-        cabecalho_conteudo.setContentsMargins(16, 10, 16, 10)
-        cabecalho_conteudo.addLayout(identificacao)
-        cabecalho_conteudo.addStretch(1)
-        cabecalho_conteudo.addWidget(self.etiqueta_sessao)
+        conteudo = QHBoxLayout()
+        conteudo.setContentsMargins(20, 12, 20, 12)
+        conteudo.addLayout(identificacao)
+        conteudo.addStretch(1)
+        conteudo.addWidget(self.etiqueta_sessao)
+        conteudo.addWidget(self.botao_terminar_sessao)
+
         cabecalho = QFrame()
-        cabecalho.setObjectName("cabecalho")
-        cabecalho.setLayout(cabecalho_conteudo)
+        cabecalho.setObjectName(theme.CABECALHO)
+        cabecalho.setLayout(conteudo)
+        return cabecalho
 
-        self.combo_dispositivos = QComboBox()
-        self.botao_escanear = QPushButton("Escanear")
-        self.botao_escanear.setObjectName(theme.BOTAO_PRIMARIO)
-        self.botao_recuperar = QPushButton("Recuperar Selecionados")
-        self.botao_recuperar.setObjectName(theme.BOTAO_SUCESSO)
-        self.botao_recuperar.setEnabled(False)
-        self.botao_relatorio = QPushButton("Gerar Relatorio")
-        self.botao_relatorio.setObjectName(theme.BOTAO_NEUTRO)
-        self.botao_contas = QPushButton("Contas")
-        self.botao_contas.setObjectName(theme.BOTAO_NEUTRO)
+    def _construir_barra_lateral(self) -> QWidget:
+        self.menu = QListWidget()
+        self.menu.setObjectName(theme.MENU_LATERAL)
+        self.itens_do_menu: dict[str, QListWidgetItem] = {}
+        self.cabecalhos_de_seccao: dict[str, QListWidgetItem] = {}
 
-        barra = QHBoxLayout()
-        barra.addWidget(QLabel("Dispositivo:"))
-        barra.addWidget(self.combo_dispositivos, 1)
-        barra.addWidget(self.botao_escanear)
-        barra.addWidget(self.botao_recuperar)
-        barra.addWidget(self.botao_relatorio)
-        barra.addWidget(self.botao_contas)
+        seccao_actual = None
+        for chave, rotulo, seccao, _permissao in MENU:
+            if seccao != seccao_actual:
+                cabecalho = QListWidgetItem(seccao)
+                cabecalho.setFlags(Qt.NoItemFlags)
+                self.menu.addItem(cabecalho)
+                self.cabecalhos_de_seccao[seccao] = cabecalho
+                seccao_actual = seccao
+            item = QListWidgetItem(rotulo)
+            item.setData(Qt.UserRole, chave)
+            self.menu.addItem(item)
+            self.itens_do_menu[chave] = item
 
-        self.tabela = QTableWidget(0, len(COLUNAS))
-        self.tabela.setHorizontalHeaderLabels(COLUNAS)
-        self.tabela.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.tabela.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.tabela.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.tabela.setAlternatingRowColors(True)
-        self.tabela.verticalHeader().setVisible(False)
-        self.tabela.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        barra = QWidget()
+        barra.setObjectName(theme.BARRA_LATERAL)
+        barra.setFixedWidth(220)
+        disposicao = QVBoxLayout(barra)
+        disposicao.setContentsMargins(0, 8, 0, 8)
+        disposicao.setSpacing(0)
+        disposicao.addWidget(self.menu, 1)
+        return barra
 
-        corpo = QVBoxLayout()
-        corpo.setContentsMargins(16, 12, 16, 12)
-        corpo.addLayout(barra)
-        corpo.addWidget(self.tabela)
+    def _construir_conteudo(self) -> QWidget:
+        self.devices_page = DevicesPage()
+        self.results_page = ResultsPage()
+        self.carving_page = CarvingPage()
+        self.audit_page = AuditPage()
+        self.accounts_page = AccountsPage(self.auth_store)
 
-        conteudo = QVBoxLayout()
-        conteudo.setContentsMargins(0, 0, 0, 0)
-        conteudo.setSpacing(0)
-        conteudo.addWidget(cabecalho)
-        conteudo.addLayout(corpo)
+        self.paineis = {
+            "dispositivos": self.devices_page,
+            "resultados": self.results_page,
+            "carving": self.carving_page,
+            "auditoria": self.audit_page,
+            "contas": self.accounts_page,
+        }
 
-        central = QWidget()
-        central.setLayout(conteudo)
-        return central
+        self.conteudo = QStackedWidget()
+        for chave, _rotulo, _seccao, _permissao in MENU:
+            self.conteudo.addWidget(self.paineis[chave])
 
-    def _construir_barra_de_estado(self) -> None:
-        self.etiqueta_privilegios = QLabel("")
-        self.statusBar().addPermanentWidget(self.etiqueta_privilegios)
+        self.banner = Banner()
 
-    def _descricao_da_sessao(self) -> str:
-        if not self.user:
-            return "sem sessao iniciada"
-        return "%s (%s)" % (self.user.get("username", "?"), self.user.get("role", "?"))
+        area = QWidget()
+        disposicao = QVBoxLayout(area)
+        disposicao.setContentsMargins(0, 0, 0, 0)
+        disposicao.setSpacing(0)
+        margem_do_banner = QWidget()
+        banner_layout = QVBoxLayout(margem_do_banner)
+        banner_layout.setContentsMargins(20, 12, 20, 0)
+        banner_layout.addWidget(self.banner)
+        disposicao.addWidget(margem_do_banner)
+        disposicao.addWidget(self.conteudo, 1)
+        return area
 
-    # ----------------------------------------------------------- permissoes
+    def _ligar_sinais(self) -> None:
+        self.login_page.autenticado.connect(self.entrar)
+        self.botao_terminar_sessao.clicked.connect(self.terminar_sessao)
+        self.menu.currentItemChanged.connect(self._menu_mudou)
+        self.devices_page.varrimento_pedido.connect(self.varrer)
+        self.results_page.recuperacao_pedida.connect(self.recuperar)
+        self.carving_page.carving_pedido.connect(self.executar_carving)
+        self.audit_page.relatorio_pedido.connect(self.gerar_relatorio)
+        self.accounts_page.conta_criada.connect(
+            lambda nome: self.notificar("Conta '%s' criada." % nome, "sucesso")
+        )
+
+    # ---------------------------------------------------------------- sessao
+
+    def mostrar_login(self) -> None:
+        """Mostra o painel de autenticacao dentro da mesma janela."""
+        self.user = {}
+        self.login_page.preparar()
+        self.janela.setCurrentWidget(self.login_page)
+
+    def entrar(self, user: dict) -> None:
+        """Abre a aplicacao para a conta autenticada."""
+        self.user = user or {}
+        self.etiqueta_sessao.setText(
+            "%s • %s" % (self.user.get("username", "?"), self.user.get("role", "?"))
+        )
+        self.janela.setCurrentIndex(1)
+        self.banner.limpar()
+        self.aplicar_permissoes()
+        self.devices_page.carregar()
+        self.results_page.mostrar_entradas([])
+        self.carving_page.mostrar_dispositivo(None)
+        if self.pode(PERMISSION_MANAGE_USERS):
+            self.accounts_page.carregar()
+        self.ir_para("dispositivos")
+
+    def terminar_sessao(self) -> None:
+        """Volta ao painel de autenticacao, sem fechar a janela."""
+        self.results_page.mostrar_entradas([])
+        self.dispositivo_actual = None
+        self.mostrar_login()
+
+    # ------------------------------------------------------------ permissoes
 
     @property
     def perfil(self) -> str:
@@ -185,46 +269,68 @@ class MainWindow(QMainWindow):
         return has_permission(self.perfil, permissao)
 
     def aplicar_permissoes(self) -> None:
-        """Esconde ou desactiva as accoes fora do perfil da conta."""
-        self.botao_escanear.setEnabled(self.pode(PERMISSION_SCAN))
-        self.botao_relatorio.setVisible(self.pode(PERMISSION_REPORT))
-        self.botao_contas.setVisible(self.pode(PERMISSION_MANAGE_USERS))
+        """Esconde da barra lateral os paineis fora do perfil da conta."""
+        visiveis_por_seccao: dict[str, bool] = {}
+        for chave, _rotulo, seccao, permissao in MENU:
+            permitido = self.pode(permissao)
+            self.itens_do_menu[chave].setHidden(not permitido)
+            visiveis_por_seccao[seccao] = visiveis_por_seccao.get(seccao, False) or permitido
+        for seccao, cabecalho in self.cabecalhos_de_seccao.items():
+            cabecalho.setHidden(not visiveis_por_seccao.get(seccao, False))
 
-    def _exigir(self, permissao: str, titulo: str) -> bool:
+    def _exigir(self, permissao: str) -> bool:
         if self.pode(permissao):
             return True
-        QMessageBox.warning(self, titulo, SEM_PERMISSAO % (self.perfil or "sem sessao"))
+        self.notificar(SEM_PERMISSAO % (self.perfil or "sem sessao"), "erro")
         return False
 
-    # ---------------------------------------------------------------- dados
+    # ---------------------------------------------------------- navegacao
 
-    def dispositivo_selecionado(self) -> str | None:
-        return self.combo_dispositivos.currentData()
+    def ir_para(self, chave: str) -> None:
+        """Mostra o painel indicado e selecciona-o na barra lateral."""
+        item = self.itens_do_menu.get(chave)
+        if item is None or item.isHidden():
+            return
+        self.menu.setCurrentItem(item)
+        self.conteudo.setCurrentWidget(self.paineis[chave])
 
-    def carregar_dispositivos(self) -> None:
-        """Preenche a combo box com os discos devolvidos por device_reader."""
-        self.combo_dispositivos.clear()
-        for dispositivo in device_reader.list_physical_drives():
-            etiqueta = "PhysicalDrive%d — %s" % (
-                dispositivo["index"],
-                _formatar_tamanho(dispositivo["size_bytes"]),
-            )
-            self.combo_dispositivos.addItem(etiqueta, dispositivo["path"])
-        if self.combo_dispositivos.count() == 0:
-            self.combo_dispositivos.addItem("Nenhum dispositivo detetado", None)
+    def painel_actual(self) -> str:
+        for chave, painel in self.paineis.items():
+            if painel is self.conteudo.currentWidget():
+                return chave
+        return ""
+
+    def _menu_mudou(self, actual, _anterior) -> None:
+        if actual is None:
+            return
+        chave = actual.data(Qt.UserRole)
+        if not chave:
+            return
+        self.banner.limpar()  # a mensagem pertence ao painel onde foi mostrada
+        self.conteudo.setCurrentWidget(self.paineis[chave])
+        if chave == "auditoria" and self.pode(PERMISSION_REPORT):
+            self.audit_page.mostrar_eventos(self.audit_log.get_events())
+        elif chave == "contas" and self.pode(PERMISSION_MANAGE_USERS):
+            self.accounts_page.carregar()
+        elif chave == "carving":
+            self.carving_page.mostrar_dispositivo(self.dispositivo_actual)
+
+    # ------------------------------------------------------------- mensagens
+
+    def notificar(self, texto: str, tipo: str = "info") -> None:
+        """Mostra uma mensagem em linha, no topo do painel."""
+        self.banner.mostrar(texto, tipo)
+        self.statusBar().showMessage(texto)
 
     def avisar_privilegios(self) -> None:
-        """Mostra na barra de estado o aviso de falta de privilegios."""
+        """Indica na barra de estado se ha privilegios de Administrador."""
         if device_reader.is_admin():
             self.etiqueta_privilegios.setObjectName("estadoOk")
             self.etiqueta_privilegios.setText(ESTADO_ADMIN)
         else:
             self.etiqueta_privilegios.setObjectName("avisoPrivilegios")
             self.etiqueta_privilegios.setText(AVISO_ADMIN)
-        # o objectName mudou: repolir para o tema aplicar a cor correspondente
-        estilo = self.etiqueta_privilegios.style()
-        estilo.unpolish(self.etiqueta_privilegios)
-        estilo.polish(self.etiqueta_privilegios)
+        theme.repolir(self.etiqueta_privilegios)
 
     def registar_evento(self, **campos) -> None:
         """Regista um evento de auditoria com o perito autenticado."""
@@ -233,171 +339,160 @@ class MainWindow(QMainWindow):
 
     # ---------------------------------------------------------------- accoes
 
-    def escanear(self) -> None:
-        """Varre o dispositivo selecionado e preenche a tabela."""
-        if not self._exigir(PERMISSION_SCAN, "Escanear"):
+    def varrer(self, device_path: str) -> None:
+        """Varre o dispositivo e mostra as entradas apagadas encontradas."""
+        if not self._exigir(PERMISSION_SCAN):
             return
-        device_path = self.dispositivo_selecionado()
         if not device_path:
-            QMessageBox.warning(self, "Escanear", "Selecione um dispositivo.")
+            self.notificar("Seleccione um dispositivo.", "aviso")
             return
 
-        self.statusBar().showMessage("A escanear %s..." % device_path)
         QGuiApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             entradas = filesystem_parser.scan_deleted_entries(device_path)
         except Exception as erro:
-            QMessageBox.critical(self, "Escanear", "Falha ao escanear:\n%s" % erro)
-            self.statusBar().showMessage("Varrimento falhado.")
+            self.notificar("Falha ao escanear %s: %s" % (device_path, erro), "erro")
             return
         finally:
             QGuiApplication.restoreOverrideCursor()
 
-        self.preencher_tabela(entradas)
-        self.registar_evento(
-            device_path=device_path,
-            action=ACTION_SCAN,
-            file_path=None,
-            file_hash=None,
-        )
-        self.statusBar().showMessage(
-            "%d entradas apagadas encontradas em %s." % (len(entradas), device_path)
+        self.dispositivo_actual = device_path
+        self.results_page.mostrar_entradas(entradas, device_path)
+        self.registar_evento(device_path=device_path, action=ACTION_SCAN)
+        self.ir_para("resultados")
+        self.notificar(
+            "%d entradas apagadas encontradas em %s." % (len(entradas), device_path),
+            "sucesso" if entradas else "info",
         )
 
-    def preencher_tabela(self, entradas: list[dict]) -> None:
-        self.tabela.setRowCount(len(entradas))
-        for linha, entrada in enumerate(entradas):
-            valores = (
-                entrada.get("name", ""),
-                str(entrada.get("size", 0)),
-                entrada.get("mtime_iso") or "-",
-            )
-            for coluna, valor in enumerate(valores):
-                item = QTableWidgetItem(valor)
-                if coluna == 0:
-                    item.setData(Qt.UserRole, entrada)
-                    item.setToolTip(entrada.get("path", ""))
-                self.tabela.setItem(linha, coluna, item)
-        self.botao_recuperar.setEnabled(
-            bool(entradas) and self.pode(PERMISSION_RECOVER)
-        )
-
-    def entradas_selecionadas(self) -> list[dict]:
-        entradas = []
-        for indice in self.tabela.selectionModel().selectedRows():
-            item = self.tabela.item(indice.row(), 0)
-            if item is not None:
-                entradas.append(item.data(Qt.UserRole))
-        return entradas
-
-    def recuperar_selecionados(self) -> None:
-        """Recupera as entradas selecionadas para uma pasta a escolher."""
-        if not self._exigir(PERMISSION_RECOVER, "Recuperar"):
+    def recuperar(self, entradas: list[dict]) -> None:
+        """Reconstroi as entradas seleccionadas numa pasta a escolher."""
+        if not self._exigir(PERMISSION_RECOVER):
             return
-        entradas = self.entradas_selecionadas()
         if not entradas:
-            QMessageBox.information(
-                self, "Recuperar", "Selecione pelo menos uma entrada na tabela."
-            )
+            self.notificar("Seleccione pelo menos uma entrada.", "aviso")
             return
 
-        destino = QFileDialog.getExistingDirectory(self, "Pasta de destino")
+        destino = self.escolher_pasta("Pasta de destino")
         if not destino:
             return
 
-        device_path = self.dispositivo_selecionado()
         recuperados, falhados = [], []
         QGuiApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             for entrada in entradas:
                 try:
-                    caminho = recovery.recover_file(device_path, entrada, destino)
-                    hash_sha256 = integrity.compute_hash(caminho)
-                    verificado = integrity.verify_integrity(hash_sha256, caminho)
-                    self.registar_evento(
-                        device_path=device_path,
-                        action=ACTION_RECOVER,
-                        file_path=caminho,
-                        file_hash=hash_sha256,
+                    caminho = recovery.recover_file(
+                        self.dispositivo_actual, entrada, destino
                     )
-                    self.registar_evento(
-                        device_path=device_path,
-                        action=ACTION_VERIFY_OK if verificado else ACTION_VERIFY_FAILED,
-                        file_path=caminho,
-                        file_hash=hash_sha256,
-                    )
+                    self._registar_ficheiro(caminho, ACTION_RECOVER)
                     recuperados.append(caminho)
                 except Exception as erro:
-                    falhados.append("%s: %s" % (entrada.get("name", "?"), erro))
+                    falhados.append("%s (%s)" % (entrada.get("name", "?"), erro))
         finally:
             QGuiApplication.restoreOverrideCursor()
 
-        self.statusBar().showMessage(
-            "%d ficheiros recuperados para %s (%d falhas)."
-            % (len(recuperados), destino, len(falhados))
-        )
         if falhados:
-            QMessageBox.warning(
-                self,
-                "Recuperar",
-                "%d ficheiros recuperados.\nFalhas:\n%s"
-                % (len(recuperados), "\n".join(falhados)),
+            self.notificar(
+                "%d ficheiros recuperados para %s. Falhas: %s"
+                % (len(recuperados), destino, "; ".join(falhados)),
+                "aviso",
             )
         else:
-            QMessageBox.information(
-                self, "Recuperar", "%d ficheiros recuperados." % len(recuperados)
+            self.notificar(
+                "%d ficheiros recuperados para %s." % (len(recuperados), destino),
+                "sucesso",
             )
+
+    def executar_carving(self, tipo: str) -> None:
+        """Varre o dispositivo por assinaturas binarias do tipo indicado."""
+        if not self._exigir(PERMISSION_RECOVER):
+            return
+        device_path = self.dispositivo_actual or self.devices_page.dispositivo_selecionado()
+        if not device_path:
+            self.notificar(
+                "Seleccione primeiro um dispositivo no painel Dispositivos.", "aviso"
+            )
+            return
+
+        destino = self.escolher_pasta("Pasta para os ficheiros extraidos")
+        if not destino:
+            return
+
+        QGuiApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            caminhos = carving_module.carve_by_signature(device_path, tipo, destino)
+        except Exception as erro:
+            self.notificar("Falha no carving: %s" % erro, "erro")
+            return
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+
+        for caminho in caminhos:
+            self._registar_ficheiro(caminho, ACTION_CARVING, device_path)
+        self.carving_page.mostrar_resultados(caminhos)
+        self.notificar(
+            "%d ficheiros %s extraidos para %s." % (len(caminhos), tipo.upper(), destino),
+            "sucesso" if caminhos else "info",
+        )
+
+    def _registar_ficheiro(self, caminho: str, accao: str,
+                           device_path: str | None = None) -> None:
+        """Calcula o SHA-256, verifica-o e regista os dois eventos."""
+        dispositivo = device_path or self.dispositivo_actual
+        hash_sha256 = integrity.compute_hash(caminho)
+        verificado = integrity.verify_integrity(hash_sha256, caminho)
+        self.registar_evento(
+            device_path=dispositivo,
+            action=accao,
+            file_path=caminho,
+            file_hash=hash_sha256,
+        )
+        self.registar_evento(
+            device_path=dispositivo,
+            action=ACTION_VERIFY_OK if verificado else ACTION_VERIFY_FAILED,
+            file_path=caminho,
+            file_hash=hash_sha256,
+        )
 
     def gerar_relatorio(self) -> None:
         """Exporta os eventos de auditoria para PDF e abre o ficheiro."""
-        if not self._exigir(PERMISSION_REPORT, "Relatorio"):
+        if not self._exigir(PERMISSION_REPORT):
             return
         eventos = self.audit_log.get_events()
         if not eventos:
-            QMessageBox.information(
-                self, "Relatorio", "Ainda nao ha eventos de auditoria para relatar."
-            )
+            self.notificar("Ainda nao ha eventos de auditoria para relatar.", "aviso")
             return
 
-        destino, _ = QFileDialog.getSaveFileName(
-            self, "Guardar relatorio", "relatorio_frda.pdf", "PDF (*.pdf)"
-        )
+        destino = self.escolher_ficheiro_de_destino()
         if not destino:
             return
 
         try:
             report.generate_report(eventos, destino)
         except Exception as erro:
-            QMessageBox.critical(
-                self, "Relatorio", "Falha ao gerar o relatorio:\n%s" % erro
-            )
+            self.notificar("Falha ao gerar o relatorio: %s" % erro, "erro")
             return
 
         self.registar_evento(
-            device_path=self.dispositivo_selecionado(),
+            device_path=self.dispositivo_actual,
             action=ACTION_REPORT,
             file_path=destino,
         )
-        self.statusBar().showMessage("Relatorio gerado em %s." % destino)
+        self.audit_page.mostrar_eventos(self.audit_log.get_events())
+        self.notificar("Relatorio gerado em %s." % destino, "sucesso")
         self.abrir_ficheiro(destino)
 
-    def gerir_contas(self) -> None:
-        """Cria uma conta de acesso (reservado ao perfil administrador)."""
-        if not self._exigir(PERMISSION_MANAGE_USERS, "Contas"):
-            return
-        if self.auth_store is None:
-            QMessageBox.warning(
-                self, "Contas", "Repositorio de contas indisponivel nesta sessao."
-            )
-            return
+    # ------------------------------------------------------------- auxiliares
 
-        dialogo = NovaContaDialog(self.auth_store, self)
-        if dialogo.exec() != QDialog.Accepted:
-            return
-        self.statusBar().showMessage("Conta '%s' criada." % dialogo.criada)
-        QMessageBox.information(
-            self, "Contas", "Conta '%s' criada com sucesso." % dialogo.criada
+    def escolher_pasta(self, titulo: str) -> str:
+        return QFileDialog.getExistingDirectory(self, titulo)
+
+    def escolher_ficheiro_de_destino(self) -> str:
+        destino, _ = QFileDialog.getSaveFileName(
+            self, "Guardar relatorio", "relatorio_frda.pdf", "PDF (*.pdf)"
         )
+        return destino
 
     @staticmethod
     def abrir_ficheiro(caminho: str) -> None:
@@ -409,8 +504,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):  # noqa: N802 (nome imposto pelo Qt)
         self.audit_log.close()
-        if self.auth_store is not None:
-            self.auth_store.close()
+        self.auth_store.close()
         super().closeEvent(event)
 
 
@@ -421,12 +515,7 @@ def main() -> int:
     auth_store = AuthStore()
     auth_store.ensure_default_accounts()
 
-    login = LoginDialog(auth_store)
-    if login.exec() != QDialog.Accepted:
-        auth_store.close()
-        return 0
-
-    janela = MainWindow(user=login.user, auth_store=auth_store)
+    janela = MainWindow(auth_store=auth_store)
     janela.show()
     return aplicacao.exec()
 
