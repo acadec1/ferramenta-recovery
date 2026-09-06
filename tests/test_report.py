@@ -21,7 +21,8 @@ DISPOSITIVO = r"\\.\PhysicalDrive0"
 
 
 def evento(action, file_path=None, timestamp="2026-09-05T10:00:00+00:00",
-           device_path=DISPOSITIVO, file_hash=None, os_user="perito", identificador=1):
+           device_path=DISPOSITIVO, file_hash=None, os_user="mambo",
+           app_user="admin", identificador=1):
     return {
         "id": identificador,
         "timestamp": timestamp,
@@ -30,6 +31,7 @@ def evento(action, file_path=None, timestamp="2026-09-05T10:00:00+00:00",
         "file_path": file_path,
         "file_hash": file_hash,
         "os_user": os_user,
+        "app_user": app_user,
     }
 
 
@@ -55,6 +57,7 @@ class SummarizeEventsTest(unittest.TestCase):
         self.assertEqual(resumo["verificados_com_sucesso"], 1)
         self.assertEqual(resumo["verificacoes_falhadas"], 1)
         self.assertEqual(resumo["dispositivos"], [DISPOSITIVO])
+        self.assertEqual(resumo["peritos"], ["admin"])
         self.assertEqual(resumo["primeiro_evento"], "2026-09-05T10:00:00+00:00")
         self.assertEqual(resumo["ultimo_evento"], "2026-09-05T10:02:01+00:00")
 
@@ -80,12 +83,23 @@ class SummarizeEventsTest(unittest.TestCase):
             [r"\\.\PhysicalDrive0", r"\\.\PhysicalDrive1"],
         )
 
+    def test_peritos_intervenientes(self):
+        eventos = [
+            evento(ACTION_SCAN, app_user="operador"),
+            evento(ACTION_RECOVER, r"D:\saida.bin", app_user="admin"),
+            evento(ACTION_SCAN, app_user=None),
+        ]
+        self.assertEqual(
+            report.summarize_events(eventos)["peritos"], ["admin", "operador"]
+        )
+
     def test_sem_eventos(self):
         resumo = report.summarize_events([])
         self.assertEqual(resumo["total_eventos"], 0)
         self.assertEqual(resumo["ficheiros_recuperados"], 0)
         self.assertIsNone(resumo["primeiro_evento"])
         self.assertEqual(resumo["dispositivos"], [])
+        self.assertEqual(resumo["peritos"], [])
 
 
 @unittest.skipIf(report is None, "reportlab nao esta instalado")
@@ -133,7 +147,7 @@ class GenerateReportTest(unittest.TestCase):
     def test_campos_nulos_e_acentos(self):
         eventos = [
             {"id": 1, "timestamp": None, "device_path": None, "action": ACTION_SCAN,
-             "file_path": None, "file_hash": None, "os_user": None},
+             "file_path": None, "file_hash": None, "os_user": None, "app_user": None},
             evento(ACTION_RECOVER, "D:/saida/relatório único (cópia).docx",
                    file_hash="c" * 64, os_user="perícia"),
         ]

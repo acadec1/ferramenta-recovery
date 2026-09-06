@@ -41,7 +41,8 @@ class AuditLogTest(unittest.TestCase):
             action="recover",
             file_path=r"D:\saida\foto.jpg",
             file_hash="a" * 64,
-            os_user="perito",
+            os_user="mambo",
+            app_user="admin",
         )
         evento = self.log.get_events()[0]
         self.assertEqual(
@@ -53,7 +54,8 @@ class AuditLogTest(unittest.TestCase):
                 "action": "recover",
                 "file_path": r"D:\saida\foto.jpg",
                 "file_hash": "a" * 64,
-                "os_user": "perito",
+                "os_user": "mambo",
+                "app_user": "admin",
             },
         )
 
@@ -71,6 +73,7 @@ class AuditLogTest(unittest.TestCase):
         self.assertIsNone(evento["device_path"])
         self.assertIsNone(evento["file_path"])
         self.assertIsNone(evento["file_hash"])
+        self.assertIsNone(evento["app_user"])
 
     def test_accao_obrigatoria(self):
         with self.assertRaises(ValueError):
@@ -121,6 +124,27 @@ class AuditLogTest(unittest.TestCase):
             self.log.get_events(device_path="'; DROP TABLE events; --")[0]["action"],
             "scan",
         )
+
+    def test_migracao_de_base_de_dados_antiga(self):
+        antiga = os.path.join(self.tmp, "antiga.db")
+        ligacao = sqlite3.connect(antiga)
+        with ligacao:
+            ligacao.execute(
+                "CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                " timestamp TEXT NOT NULL, device_path TEXT, action TEXT NOT NULL,"
+                " file_path TEXT, file_hash TEXT, os_user TEXT)"
+            )
+            ligacao.execute(
+                "INSERT INTO events (timestamp, action) VALUES ('2026-01-01', 'scan')"
+            )
+        ligacao.close()
+
+        with AuditLog(antiga) as log:
+            log.log_event(action="recover", app_user="admin")
+            eventos = log.get_events()
+        self.assertEqual([e["action"] for e in eventos], ["scan", "recover"])
+        self.assertIsNone(eventos[0]["app_user"])  # evento anterior a migracao
+        self.assertEqual(eventos[1]["app_user"], "admin")
 
     def test_ligacao_fechada(self):
         self.log.close()

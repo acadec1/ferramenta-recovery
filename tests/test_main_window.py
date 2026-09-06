@@ -14,18 +14,23 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QDialog
 
     from src.gui import main_window
 except ImportError:  # pragma: no cover - depende do ambiente
     main_window = None
 
+from src import auth
 from src.audit_log import AuditLog
+from src.auth import ROLE_ADMIN, ROLE_OPERATOR, AuthStore
 
 DISPOSITIVOS = [
     {"index": 0, "path": r"\\.\PhysicalDrive0", "size_bytes": 500107862016},
     {"index": 1, "path": r"\\.\PhysicalDrive1", "size_bytes": 128035676160},
 ]
+
+ADMIN = {"id": 1, "username": "admin", "role": ROLE_ADMIN}
+OPERADOR = {"id": 2, "username": "operador", "role": ROLE_OPERATOR}
 
 ENTRADAS = [
     {
@@ -55,6 +60,11 @@ class MainWindowTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.log = AuditLog(":memory:")
+        patcher = mock.patch.object(auth, "ITERATIONS", 1000)  # PBKDF2 mais rapido
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.auth_store = AuthStore(":memory:")
+        self.auth_store.ensure_default_accounts()
         self._patch("device_reader.list_physical_drives", return_value=list(DISPOSITIVOS))
         self._patch("device_reader.is_admin", return_value=False)
 
@@ -64,13 +74,15 @@ class MainWindowTest(unittest.TestCase):
         self.addCleanup(patcher.stop)
         return substituto
 
-    def _janela(self):
-        janela = main_window.MainWindow(audit_log=self.log)
+    def _janela(self, user=ADMIN):
+        janela = main_window.MainWindow(
+            user=user, audit_log=self.log, auth_store=self.auth_store
+        )
         self.addCleanup(janela.close)
         return janela
 
-    def _janela_com_entradas(self, entradas=ENTRADAS):
-        janela = self._janela()
+    def _janela_com_entradas(self, entradas=ENTRADAS, user=ADMIN):
+        janela = self._janela(user)
         self._patch("filesystem_parser.scan_deleted_entries", return_value=list(entradas))
         janela.botao_escanear.click()
         return janela
@@ -92,12 +104,86 @@ class MainWindowTest(unittest.TestCase):
 
     def test_aviso_de_privilegios_na_barra_de_estado(self):
         janela = self._janela()
-        self.assertEqual(janela.statusBar().currentMessage(), main_window.AVISO_ADMIN)
+        self.assertEqual(janela.etiqueta_privilegios.text(), main_window.AVISO_ADMIN)
+        self.assertEqual(janela.etiqueta_privilegios.objectName(), "avisoPrivilegios")
 
     def test_sem_aviso_quando_e_administrador(self):
         self._patch("device_reader.is_admin", return_value=True)
         janela = self._janela()
-        self.assertNotIn("AVISO", janela.statusBar().currentMessage())
+        self.assertEqual(janela.etiqueta_privilegios.text(), main_window.ESTADO_ADMIN)
+        self.assertEqual(janela.etiqueta_privilegios.objectName(), "estadoOk")
+
+    # ------------------------------------------------------------- sessao
+
+    def test_sessao_identificada_no_cabecalho(self):
+        janela = self._janela()
+        self.assertEqual(janela.etiqueta_sessao.text(), "admin (administrador)")
+
+    def test_sessao_de_operador(self):
+        janela = self._janela(OPERADOR)
+        self.assertEqual(janela.etiqueta_sessao.text(), "operador (operador)")
+
+    def test_janela_sem_sessao_nao_permite_accoes(self):
+        janela = self._janela(user=None)
+        self.assertEqual(janela.etiqueta_sessao.text(), "sem sessao iniciada")
+        self.assertFalse(janela.botao_escanear.isEnabled())
+        self.assertFalse(janela.botao_relatorio.isVisible())
+        self.assertFalse(janela.botao_contas.isVisible())
+
+    # --------------------------------------------------------- permissoes
+
+    def test_administrador_ve_todas_as_accoes(self):
+        janela = self._janela(ADMIN)
+        janela.show()
+        self.assertTrue(janela.botao_escanear.isEnabled())
+        self.assertTrue(janela.botao_relatorio.isVisible())
+        self.assertTrue(janela.botao_contas.isVisible())
+
+    def test_operador_nao_ve_relatorio_nem_contas(self):
+        janela = self._janela(OPERADOR)
+        janela.show()
+        self.assertTrue(janela.botao_escanear.isEnabled())
+        self.assertFalse(janela.botao_relatorio.isVisible())
+        self.assertFalse(janela.botao_contas.isVisible())
+
+    def test_operador_recupera(self):
+        janela = self._janela_com_entradas(user=OPERADOR)
+        recover = self._fake_recover()
+        self._patch("QFileDialog.getExistingDirectory", return_value=self.tmp)
+        self._patch("QMessageBox.information")
+        janela.tabela.selectRow(0)
+
+        janela.botao_recuperar.click()
+
+        self.assertEqual(recover.call_count, 1)
+
+    def test_operador_nao_gera_relatorio(self):
+        janela = self._janela_com_entradas(user=OPERADOR)
+        gerar = self._patch("report.generate_report")
+        aviso = self._patch("QMessageBox.warning")
+        dialogo = self._patch("QFileDialog.getSaveFileName")
+
+        janela.gerar_relatorio()
+
+        gerar.assert_not_called()
+        dialogo.assert_not_called()
+        aviso.assert_called_once()
+        self.assertIn("operador", aviso.call_args[0][2])
+
+    def test_operador_nao_gere_contas(self):
+        janela = self._janela(OPERADOR)
+        aviso = self._patch("QMessageBox.warning")
+        with mock.patch.object(main_window, "NovaContaDialog") as dialogo:
+            janela.gerir_contas()
+        dialogo.assert_not_called()
+        aviso.assert_called_once()
+
+    def test_sem_sessao_nao_escaneia(self):
+        janela = self._janela(user=None)
+        scan = self._patch("filesystem_parser.scan_deleted_entries")
+        self._patch("QMessageBox.warning")
+        janela.escanear()
+        scan.assert_not_called()
 
     # ----------------------------------------------------------- escanear
 
@@ -117,11 +203,16 @@ class MainWindowTest(unittest.TestCase):
         janela.botao_escanear.click()
         scan.assert_called_once_with(r"\\.\PhysicalDrive1")
 
-    def test_escanear_regista_evento_de_auditoria(self):
+    def test_escanear_regista_evento_com_o_perito(self):
         self._janela_com_entradas()
         eventos = self.log.get_events()
         self.assertEqual([e["action"] for e in eventos], ["scan"])
         self.assertEqual(eventos[0]["device_path"], r"\\.\PhysicalDrive0")
+        self.assertEqual(eventos[0]["app_user"], "admin")
+
+    def test_evento_regista_o_operador_autenticado(self):
+        self._janela_com_entradas(user=OPERADOR)
+        self.assertEqual(self.log.get_events()[0]["app_user"], "operador")
 
     def test_escanear_sem_dispositivo(self):
         self._patch("device_reader.list_physical_drives", return_value=[])
@@ -181,9 +272,13 @@ class MainWindowTest(unittest.TestCase):
 
         janela.botao_recuperar.click()
 
-        accoes = [e["action"] for e in self.log.get_events()]
-        self.assertEqual(accoes, ["scan", "recover", "verify_ok", "recover", "verify_ok"])
-        hashes = {e["file_hash"] for e in self.log.get_events() if e["file_hash"]}
+        eventos = self.log.get_events()
+        self.assertEqual(
+            [e["action"] for e in eventos],
+            ["scan", "recover", "verify_ok", "recover", "verify_ok"],
+        )
+        self.assertTrue(all(e["app_user"] == "admin" for e in eventos))
+        hashes = {e["file_hash"] for e in eventos if e["file_hash"]}
         self.assertEqual(len(hashes), 1)  # mesmo conteudo, mesmo SHA-256
         self.assertEqual(len(next(iter(hashes))), 64)
 
@@ -291,10 +386,50 @@ class MainWindowTest(unittest.TestCase):
         abrir.assert_not_called()
         self.assertEqual([e["action"] for e in self.log.get_events()], ["scan"])
 
+    # ------------------------------------------------------------- contas
+
+    def test_administrador_cria_conta(self):
+        janela = self._janela(ADMIN)
+        self._patch("QMessageBox.information")
+        with mock.patch.object(main_window, "NovaContaDialog") as fabrica:
+            dialogo = fabrica.return_value
+            dialogo.exec.return_value = QDialog.Accepted
+            dialogo.criada = "perito3"
+            janela.botao_contas.click()
+        fabrica.assert_called_once_with(self.auth_store, janela)
+        self.assertIn("perito3", janela.statusBar().currentMessage())
+
+    def test_criacao_de_conta_cancelada(self):
+        janela = self._janela(ADMIN)
+        informacao = self._patch("QMessageBox.information")
+        with mock.patch.object(main_window, "NovaContaDialog") as fabrica:
+            fabrica.return_value.exec.return_value = QDialog.Rejected
+            janela.botao_contas.click()
+        informacao.assert_not_called()
+
+    def test_contas_sem_repositorio(self):
+        janela = main_window.MainWindow(user=ADMIN, audit_log=self.log, auth_store=None)
+        self.addCleanup(janela.close)
+        aviso = self._patch("QMessageBox.warning")
+        janela.gerir_contas()
+        aviso.assert_called_once()
+
+    # --------------------------------------------------------------- tema
+
     def test_formatar_tamanho(self):
         self.assertEqual(main_window._formatar_tamanho(512), "512.0 B")
         self.assertEqual(main_window._formatar_tamanho(1536), "1.5 KB")
         self.assertEqual(main_window._formatar_tamanho(500107862016), "465.8 GB")
+
+    def test_botoes_com_nomes_de_objecto_do_tema(self):
+        janela = self._janela()
+        self.assertEqual(janela.botao_escanear.objectName(), "botaoPrimario")
+        self.assertEqual(janela.botao_recuperar.objectName(), "botaoSucesso")
+        self.assertEqual(janela.botao_relatorio.objectName(), "botaoNeutro")
+
+    def test_tabela_com_linhas_alternadas(self):
+        janela = self._janela()
+        self.assertTrue(janela.tabela.alternatingRowColors())
 
 
 if __name__ == "__main__":

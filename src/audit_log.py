@@ -20,7 +20,15 @@ ACTION_VERIFY_OK = "verify_ok"
 ACTION_VERIFY_FAILED = "verify_falhou"
 ACTION_REPORT = "report"
 
-FIELDS = ("timestamp", "device_path", "action", "file_path", "file_hash", "os_user")
+FIELDS = (
+    "timestamp",
+    "device_path",
+    "action",
+    "file_path",
+    "file_hash",
+    "os_user",
+    "app_user",
+)
 
 CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS events (
@@ -30,7 +38,8 @@ CREATE TABLE IF NOT EXISTS events (
     action TEXT NOT NULL,
     file_path TEXT,
     file_hash TEXT,
-    os_user TEXT
+    os_user TEXT,
+    app_user TEXT
 )
 """
 
@@ -47,6 +56,20 @@ class AuditLog:
         with self.connection:
             self.connection.execute(CREATE_TABLE)
             self.connection.execute(CREATE_INDEX)
+        self._migrar_colunas_em_falta()
+
+    def _migrar_colunas_em_falta(self) -> None:
+        """Acrescenta colunas novas a bases de dados criadas por versoes anteriores."""
+        existentes = {
+            linha["name"]
+            for linha in self.connection.execute("PRAGMA table_info(events)")
+        }
+        with self.connection:
+            for campo in FIELDS:
+                if campo not in existentes:
+                    self.connection.execute(
+                        "ALTER TABLE events ADD COLUMN %s TEXT" % campo
+                    )
 
     def __enter__(self) -> "AuditLog":
         return self
@@ -61,8 +84,9 @@ class AuditLog:
         """Regista um evento e devolve o respectivo identificador.
 
         Campos aceites: ``timestamp`` (por omissao, o instante actual em UTC),
-        ``device_path``, ``action`` (obrigatorio), ``file_path``, ``file_hash``
-        e ``os_user`` (por omissao, o utilizador do sistema operativo).
+        ``device_path``, ``action`` (obrigatorio), ``file_path``, ``file_hash``,
+        ``os_user`` (por omissao, o utilizador do sistema operativo) e
+        ``app_user`` (o perito autenticado na aplicacao).
         """
         desconhecidos = set(kwargs) - set(FIELDS)
         if desconhecidos:

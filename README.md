@@ -24,6 +24,7 @@ integridade, a auditoria e os relatórios funcionam sem ele.
 
 ```
 src/
+  auth.py               Contas, perfis de acesso e autenticação (PBKDF2-SHA256)
   device_reader.py      Enumeração de discos físicos (\\.\PhysicalDriveN)
   filesystem_parser.py  Varrimento de entradas apagadas via pytsk3
   recovery.py           Reconstrução de ficheiros a partir dos clusters/sectores
@@ -32,6 +33,9 @@ src/
   audit_log.py          Registo de auditoria / cadeia de custódia (sqlite3)
   report.py             Relatório PDF (ReportLab)
   gui/main_window.py    Interface PySide6
+  gui/login_dialog.py   Ecrã de autenticação
+  gui/account_dialog.py Criação de contas (só administrador)
+  gui/theme.py          Tema visual (claro institucional)
 tests/                  Testes unitários (unittest, com mocks de pytsk3/hardware)
 ```
 
@@ -43,6 +47,35 @@ py -3.11 -m src.gui.main_window
 
 Executar a partir de uma consola elevada (Administrador) para acesso a disco bruto.
 
+Ao arrancar, a aplicação pede autenticação. As contas iniciais são criadas na
+primeira execução:
+
+| Utilizador | Password      | Perfil        |
+|------------|---------------|---------------|
+| `admin`    | `admin123`    | administrador |
+| `operador` | `operador123` | operador      |
+
+## Contas e perfis de acesso
+
+| Ação                  | administrador | operador |
+|-----------------------|:-------------:|:--------:|
+| Escanear              | sim           | sim      |
+| Recuperar ficheiros   | sim           | sim      |
+| Gerar relatório PDF   | sim           | não      |
+| Criar contas          | sim           | não      |
+
+O operador não vê sequer os botões de relatório e de contas. Podem criar-se mais
+contas no botão **Contas**, disponível apenas ao administrador.
+
+As passwords são guardadas com PBKDF2-HMAC-SHA256 (200 000 iterações e salt
+aleatório por conta) na tabela `users` do ficheiro `frda_audit.db` — nunca em
+claro. As passwords iniciais são públicas por estarem aqui documentadas: devem
+ser substituídas por contas próprias antes de qualquer uso real.
+
+O perito autenticado fica registado em cada evento da cadeia de custódia (coluna
+`app_user`) e aparece no relatório PDF, ao lado do utilizador do sistema
+operativo.
+
 ## Como testar
 
 ### 1. Testes automáticos (sem hardware, sem privilégios)
@@ -52,7 +85,7 @@ py -3.11 -m unittest discover -s tests -t . -v      # suite completa
 py -3.11 -m unittest tests.test_carving -v          # um módulo isolado
 ```
 
-101 testes. Usam mocks de `pytsk3` e do `kernel32`, e imagens de disco sintéticas
+157 testes. Usam mocks de `pytsk3` e do `kernel32`, e imagens de disco sintéticas
 criadas em ficheiros temporários — nenhum dispositivo físico é tocado. Os testes da
 GUI correm com Qt em modo *offscreen* e ficam em `skipped` se o PySide6 não estiver
 instalado; os de `report.py` ficam em `skipped` sem o ReportLab.
@@ -86,13 +119,15 @@ Os dois hashes SHA-256 devem coincidir.
    corresponde ao `N` de `\\.\PhysicalDriveN`, e o tamanho confirma que é a pen.
 3. Abrir o PowerShell **como Administrador** e lançar `py -3.11 -m src.gui.main_window`.
    Sem elevação a barra de estado mostra o aviso e o acesso a disco bruto falha.
-4. Escolher o dispositivo na combo box e carregar em **Escanear**: a tabela lista as
+4. Autenticar-se com `admin` / `admin123` (o perfil `operador` chega para os passos
+   5 e 6, mas não gera o relatório do passo 7).
+5. Escolher o dispositivo na combo box e carregar em **Escanear**: a tabela lista as
    entradas apagadas com nome, tamanho e data de modificação.
-5. Selecionar as linhas e carregar em **Recuperar Selecionados**, escolhendo uma pasta
+6. Selecionar as linhas e carregar em **Recuperar Selecionados**, escolhendo uma pasta
    **noutro disco**. Regra forense: nunca gravar no dispositivo em análise.
-6. Carregar em **Gerar Relatório** para exportar o PDF com a tabela de eventos e o
+7. Carregar em **Gerar Relatório** para exportar o PDF com a tabela de eventos e o
    resumo (ficheiros recuperados e verificados com sucesso).
-7. Confirmar a integridade comparando o SHA-256 registado na auditoria com o do
+8. Confirmar a integridade comparando o SHA-256 registado na auditoria com o do
    ficheiro recuperado:
 
 ```

@@ -13,8 +13,16 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from src.audit_log import ACTION_RECOVER, ACTION_VERIFY_FAILED, ACTION_VERIFY_OK
 
 TITULO = "FRDA — Relatorio de Recuperacao de Dados"
-COLUNAS = ("Data/Hora", "Dispositivo", "Accao", "Ficheiro", "SHA-256", "Utilizador")
-LARGURAS = (34 * mm, 30 * mm, 24 * mm, 70 * mm, 78 * mm, 26 * mm)
+COLUNAS = (
+    "Data/Hora",
+    "Dispositivo",
+    "Accao",
+    "Ficheiro",
+    "SHA-256",
+    "Utilizador SO",
+    "Perito",
+)
+LARGURAS = (32 * mm, 28 * mm, 22 * mm, 58 * mm, 66 * mm, 22 * mm, 22 * mm)
 
 
 def _ficheiros_por_accao(events: list[dict], action: str) -> set:
@@ -31,9 +39,11 @@ def summarize_events(events: list[dict]) -> dict:
     dispositivos = sorted(
         {event["device_path"] for event in events if event.get("device_path")}
     )
+    peritos = sorted({event["app_user"] for event in events if event.get("app_user")})
     return {
         "total_eventos": len(events),
         "dispositivos": dispositivos,
+        "peritos": peritos,
         "ficheiros_recuperados": len(_ficheiros_por_accao(events, ACTION_RECOVER)),
         "verificados_com_sucesso": len(_ficheiros_por_accao(events, ACTION_VERIFY_OK)),
         "verificacoes_falhadas": len(_ficheiros_por_accao(events, ACTION_VERIFY_FAILED)),
@@ -57,6 +67,7 @@ def _tabela_de_eventos(events: list[dict], estilo) -> Table:
                 _celula(event.get("file_path"), estilo),
                 _celula(event.get("file_hash"), estilo),
                 _celula(event.get("os_user"), estilo),
+                _celula(event.get("app_user"), estilo),
             ]
         )
     tabela = Table(linhas, colWidths=LARGURAS, repeatRows=1)
@@ -104,6 +115,7 @@ def generate_report(events: list[dict], output_path: str) -> None:
         ("Verificados com sucesso (SHA-256)", resumo["verificados_com_sucesso"]),
         ("Verificacoes falhadas", resumo["verificacoes_falhadas"]),
         ("Dispositivos analisados", ", ".join(resumo["dispositivos"]) or "-"),
+        ("Peritos intervenientes", ", ".join(resumo["peritos"]) or "-"),
         ("Primeiro evento", resumo["primeiro_evento"] or "-"),
         ("Ultimo evento", resumo["ultimo_evento"] or "-"),
     ]
