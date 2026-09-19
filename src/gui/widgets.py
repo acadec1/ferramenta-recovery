@@ -261,30 +261,28 @@ class CartaoDeMetodo(QFrame):
         self.setObjectName(theme.ESCOLHA_DE_METODO)
         self.setProperty("seleccionado", False)
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(104)
+        self.setFixedHeight(74)
 
         self.etiqueta_icone = QLabel()
-        self.etiqueta_icone.setPixmap(icons.chip(nome_do_icone, cor, 38))
-        self.etiqueta_icone.setFixedSize(38, 38)
+        self.etiqueta_icone.setPixmap(icons.chip(nome_do_icone, cor, 30))
+        self.etiqueta_icone.setFixedSize(30, 30)
 
         self.etiqueta_titulo = QLabel(titulo)
         self.etiqueta_titulo.setObjectName(theme.NOME_DO_CARTAO)
-        self.etiqueta_titulo.setWordWrap(True)
         self.etiqueta_descricao = QLabel(descricao)
         self.etiqueta_descricao.setObjectName(theme.DETALHE_DO_CARTAO)
         self.etiqueta_descricao.setWordWrap(True)
 
         texto = QVBoxLayout()
         texto.setContentsMargins(0, 0, 0, 0)
-        texto.setSpacing(2)
+        texto.setSpacing(1)
         texto.addWidget(self.etiqueta_titulo)
         texto.addWidget(self.etiqueta_descricao)
-        texto.addStretch(1)
 
         disposicao = QHBoxLayout(self)
-        disposicao.setContentsMargins(14, 12, 14, 12)
-        disposicao.setSpacing(12)
-        disposicao.addWidget(self.etiqueta_icone, 0, Qt.AlignTop)
+        disposicao.setContentsMargins(12, 8, 12, 8)
+        disposicao.setSpacing(10)
+        disposicao.addWidget(self.etiqueta_icone, 0, Qt.AlignVCenter)
         disposicao.addLayout(texto, 1)
 
     def definir_seleccionado(self, seleccionado: bool) -> None:
@@ -300,10 +298,17 @@ class CartaoDeMetodo(QFrame):
 
 
 class CartaoDeDispositivo(QFrame):
-    """Cartao clicavel com icone, nome, ocupacao e capacidade do dispositivo."""
+    """Cartao quadrado com icone, nome, ocupacao e capacidade do dispositivo.
+
+    O formato quadrado permite mostrar mais dispositivos por linha sem que o
+    painel fique comprido: o icone fica em cima e o texto centrado por baixo.
+    """
 
     escolhido = Signal(object)
     activado = Signal(object)
+
+    LARGURA = 148
+    ALTURA = 132
 
     def __init__(self, dados: dict, titulo: str, subtitulo: str, nome_do_icone: str,
                  cor: str = "azul", usado: int | None = None,
@@ -313,50 +318,61 @@ class CartaoDeDispositivo(QFrame):
         self.setObjectName(theme.CARTAO_DISPOSITIVO)
         self.setProperty("seleccionado", False)
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(84)
+        self.setFixedSize(self.LARGURA, self.ALTURA)
+        self.setToolTip("%s — %s" % (titulo, subtitulo))
 
         self.etiqueta_icone = QLabel()
-        self.etiqueta_icone.setPixmap(icons.chip(nome_do_icone, cor))
-        self.etiqueta_icone.setFixedSize(44, 44)
+        self.etiqueta_icone.setPixmap(icons.chip(nome_do_icone, cor, 38))
+        self.etiqueta_icone.setFixedSize(38, 38)
 
         self.etiqueta_nome = QLabel(titulo)
         self.etiqueta_nome.setObjectName(theme.NOME_DO_CARTAO)
+        self.etiqueta_nome.setAlignment(Qt.AlignCenter)
+        self.etiqueta_nome.setWordWrap(True)
         self.etiqueta_detalhe = QLabel(subtitulo)
         self.etiqueta_detalhe.setObjectName(theme.DETALHE_DO_CARTAO)
+        self.etiqueta_detalhe.setAlignment(Qt.AlignCenter)
 
         self.barra = QProgressBar()
         self.barra.setObjectName(theme.BARRA_CAPACIDADE)
         self.barra.setTextVisible(False)
         self.etiqueta_capacidade = QLabel("")
         self.etiqueta_capacidade.setObjectName(theme.DETALHE_DO_CARTAO)
-        self._mostrar_ocupacao(usado, total)
+        self.etiqueta_capacidade.setAlignment(Qt.AlignCenter)
+        self.tem_capacidade = self._mostrar_ocupacao(usado, total)
 
-        texto = QVBoxLayout()
-        texto.setContentsMargins(0, 0, 0, 0)
-        texto.setSpacing(3)
-        texto.addWidget(self.etiqueta_nome)
-        texto.addWidget(self.etiqueta_detalhe)
-        texto.addWidget(self.barra)
-        texto.addWidget(self.etiqueta_capacidade)
+        self.disposicao = QVBoxLayout(self)
+        self.disposicao.setContentsMargins(10, 10, 10, 10)
+        self.disposicao.setSpacing(3)
+        self.disposicao.addStretch(1)
+        self.disposicao.addWidget(self.etiqueta_icone, 0, Qt.AlignHCenter)
+        self.disposicao.addSpacing(2)
+        self.disposicao.addWidget(self.etiqueta_nome)
+        self.disposicao.addWidget(self.etiqueta_detalhe)
+        self.disposicao.addStretch(1)
+        if self.tem_capacidade:
+            self.disposicao.addWidget(self.barra)
+            self.disposicao.addWidget(self.etiqueta_capacidade)
 
-        disposicao = QHBoxLayout(self)
-        disposicao.setContentsMargins(14, 12, 14, 12)
-        disposicao.setSpacing(12)
-        disposicao.addWidget(self.etiqueta_icone, 0, Qt.AlignTop)
-        disposicao.addLayout(texto, 1)
-
-    def _mostrar_ocupacao(self, usado, total) -> None:
+    def _mostrar_ocupacao(self, usado, total) -> bool:
+        """Prepara a barra de ocupacao; devolve False se nao houver capacidade."""
         if not total or usado is None:
             self.barra.setVisible(False)
             self.etiqueta_capacidade.setVisible(False)
-            return
+            return False
         percentagem = max(0, min(100, round(usado * 100 / total)))
         self.barra.setValue(percentagem)
         self.barra.setProperty("nivel", "alto" if percentagem >= 90 else "normal")
         theme.repolir(self.barra)
-        self.etiqueta_capacidade.setText(
-            "%s livres de %s" % (formatar_tamanho(total - usado), formatar_tamanho(total))
+        # o cartao e estreito: na face fica so o espaco livre e o total vai
+        # para a dica, que aparece ao passar o rato
+        self.etiqueta_capacidade.setText("%s livres" % formatar_tamanho(total - usado))
+        self.setToolTip(
+            "%s\n%s livres de %s"
+            % (self.toolTip(), formatar_tamanho(total - usado),
+               formatar_tamanho(total))
         )
+        return True
 
     def definir_seleccionado(self, seleccionado: bool) -> None:
         self.setProperty("seleccionado", bool(seleccionado))

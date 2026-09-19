@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QGridLayout,
@@ -30,16 +32,14 @@ ACCAO = "Iniciar analise"
 SECCAO_METODO = "Metodo de recuperacao"
 
 METODOS = (
-    (METODO_METADADOS, "Recuperacao baseada em metadados",
-     "Usa as estruturas e os metadados do sistema de ficheiros para localizar "
-     "o que foi apagado. Recupera nomes e caminhos originais.",
+    (METODO_METADADOS, "Metadados",
+     "Le as estruturas do sistema de ficheiros. Devolve nomes e caminhos.",
      "auditoria", "azul"),
-    (METODO_CARVING, "Recuperacao por assinaturas (File Carving)",
-     "Procura assinaturas de JPEG, PDF e DOCX nos dados em bruto. Funciona "
-     "mesmo sem sistema de ficheiros, mas perde os nomes originais.",
+    (METODO_CARVING, "Assinaturas (Carving)",
+     "Procura JPEG, PDF e DOCX nos dados em bruto, sem sistema de ficheiros.",
      "carving", "roxo"),
 )
-COLUNAS_DA_GRELHA = 2
+COLUNAS_DA_GRELHA = 4
 
 SECCAO_DISCOS = "Discos fisicos"
 SECCAO_VOLUMES = "Volumes locais"
@@ -74,7 +74,7 @@ class DevicesPage(QWidget):
 
         self.seccoes = QVBoxLayout()
         self.seccoes.setContentsMargins(0, 0, 8, 0)
-        self.seccoes.setSpacing(10)
+        self.seccoes.setSpacing(6)
 
         interior = QWidget()
         interior.setLayout(self.seccoes)
@@ -157,14 +157,15 @@ class DevicesPage(QWidget):
         self.seccoes.addWidget(TituloDeSeccao(titulo, len(cartoes)))
         grelha = QGridLayout()
         grelha.setContentsMargins(0, 0, 0, 0)
-        grelha.setHorizontalSpacing(12)
-        grelha.setVerticalSpacing(12)
+        grelha.setHorizontalSpacing(10)
+        grelha.setVerticalSpacing(10)
         for posicao, cartao in enumerate(cartoes):
             grelha.addWidget(cartao, posicao // COLUNAS_DA_GRELHA,
-                             posicao % COLUNAS_DA_GRELHA)
+                             posicao % COLUNAS_DA_GRELHA, Qt.AlignLeft)
             self._ligar_cartao(cartao)
-        for coluna in range(COLUNAS_DA_GRELHA):
-            grelha.setColumnStretch(coluna, 1)
+        # a ultima coluna absorve o espaco livre: os cartoes ficam encostados
+        # a esquerda, sem esticar para alem do tamanho proprio
+        grelha.setColumnStretch(COLUNAS_DA_GRELHA, 1)
         suporte = QWidget()
         suporte.setLayout(grelha)
         self.seccoes.addWidget(suporte)
@@ -178,7 +179,7 @@ class DevicesPage(QWidget):
         return CartaoDeDispositivo(
             {"tipo": "disco", "dados": disco},
             "Disco fisico %d" % disco["index"],
-            "Acesso bruto • %s" % formatar_tamanho(disco["size_bytes"]),
+            formatar_tamanho(disco["size_bytes"]),
             "disco",
             cor="azul",
         )
@@ -202,7 +203,7 @@ class DevicesPage(QWidget):
         return CartaoDeDispositivo(
             {"tipo": "imagem", "dados": {"path": self.imagem}},
             "Imagem de disco",
-            self.imagem or "Abrir um ficheiro .dd, .img ou .raw",
+            os.path.basename(self.imagem) if self.imagem else "Abrir .dd, .img ou .raw",
             "imagem",
             cor="roxo",
         )

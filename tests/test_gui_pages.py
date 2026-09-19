@@ -217,10 +217,17 @@ class DevicesPageTest(PainelBase):
         self.assertEqual(len(self._cartoes("volume")), 3)
         self.assertEqual(len(self._cartoes("imagem")), 1)
 
+    def test_cartoes_sao_quadrados_e_compactos(self):
+        cartao = self._cartoes("disco")[0]
+        self.assertEqual(cartao.width(), cartao.LARGURA)
+        self.assertEqual(cartao.height(), cartao.ALTURA)
+        self.assertLess(abs(cartao.LARGURA - cartao.ALTURA), 20)  # quase quadrado
+
     def test_cartao_de_disco(self):
         cartao = self._cartoes("disco")[0]
         self.assertEqual(cartao.etiqueta_nome.text(), "Disco fisico 0")
-        self.assertEqual(cartao.etiqueta_detalhe.text(), "Acesso bruto • 465.8 GB")
+        self.assertEqual(cartao.etiqueta_detalhe.text(), "465.8 GB")
+        self.assertFalse(cartao.tem_capacidade)  # um disco fisico nao tem ocupacao
         self.assertFalse(cartao.barra.isVisible())
 
     def test_cartao_de_volume_mostra_ocupacao(self):
@@ -229,7 +236,12 @@ class DevicesPageTest(PainelBase):
         self.assertEqual(cartao.etiqueta_nome.text(), "Mamboza Jr. (D:)")
         self.assertEqual(cartao.etiqueta_detalhe.text(), "NTFS • Fixo")
         self.assertEqual(cartao.barra.value(), 61)  # 305 GB usados de 500 GB
-        self.assertIn("livres de", cartao.etiqueta_capacidade.text())
+        self.assertEqual(cartao.etiqueta_capacidade.text(), "181.6 GB livres")
+        self.assertIn("livres de 465.7 GB", cartao.toolTip())
+        # a barra tem de estar mesmo no cartao, nao so preenchida
+        self.assertTrue(cartao.tem_capacidade)
+        self.assertIs(cartao.disposicao.itemAt(cartao.disposicao.count() - 2).widget(),
+                      cartao.barra)
 
     def test_unidade_externa_numa_seccao_propria(self):
         externo = next(c for c in self._cartoes("volume")
@@ -330,7 +342,7 @@ class DevicesPageTest(PainelBase):
         cartao = self._cartoes("imagem")[0]
         self.assertTrue(cartao.esta_seleccionado())
         self.assertEqual(self.pagina.dispositivo_selecionado(), r"D:\provas\caso1.dd")
-        self.assertEqual(cartao.etiqueta_detalhe.text(), r"D:\provas\caso1.dd")
+        self.assertEqual(cartao.etiqueta_detalhe.text(), "caso1.dd")
 
     def test_sem_dispositivos(self):
         with mock.patch("src.gui.pages.devices.device_reader.list_physical_drives",
