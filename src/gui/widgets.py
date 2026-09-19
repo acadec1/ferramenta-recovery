@@ -142,6 +142,7 @@ AGUARDANDO = "aguardando"
 EM_ANALISE = "analise"
 EM_RECUPERACAO = "recuperacao"
 CONCLUIDO = "concluido"
+INTERROMPIDO = "interrompido"
 ERRO = "erro"
 
 ESTADOS = {
@@ -149,6 +150,7 @@ ESTADOS = {
     EM_ANALISE: "Em analise",
     EM_RECUPERACAO: "Em recuperacao",
     CONCLUIDO: "Concluido",
+    INTERROMPIDO: "Interrompido",
     ERRO: "Erro",
 }
 
@@ -196,16 +198,24 @@ class EstadoDaOperacao(QWidget):
         for widget in (self.ponto, self.etiqueta):
             widget.setProperty("estado", self.estado)
             theme.repolir(widget)
-        if self.estado in (AGUARDANDO, CONCLUIDO, ERRO):
+        if self.estado in (AGUARDANDO, CONCLUIDO, INTERROMPIDO, ERRO):
+            # a barra deixa de andar; fica cheia so quando correu ate ao fim
+            valor = self.barra.value() if self.estado == INTERROMPIDO else 0
             self.barra.setRange(0, 100)
-            self.barra.setValue(100 if self.estado == CONCLUIDO else 0)
+            self.barra.setValue(100 if self.estado == CONCLUIDO else valor)
 
     def definir_progresso(self, feitos: int, total: int) -> None:
-        """Actualiza a barra; sem total conhecido fica em movimento continuo."""
+        """Actualiza a barra e a percentagem apresentada.
+
+        Sem total conhecido a barra fica em movimento continuo, indicando o
+        trabalho ja feito em vez de uma percentagem que nao existe.
+        """
         if not total:
             self.barra.setRange(0, 0)  # indeterminada
+            self.barra.setFormat("%d a processar..." % feitos if feitos else "...")
             return
         self.barra.setRange(0, 100)
+        self.barra.setFormat("%p%")
         self.barra.setValue(max(0, min(100, round(feitos * 100 / total))))
 
     def percentagem(self) -> int:

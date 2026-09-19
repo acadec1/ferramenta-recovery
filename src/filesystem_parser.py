@@ -271,7 +271,8 @@ def _total_estimado(fs) -> int:
 
 
 def _registos_nao_alocados(fs, partition, entries, inodes, progresso=None,
-                           ja_feitos=0, total=0, ao_encontrar=None) -> int:
+                           ja_feitos=0, total=0, ao_encontrar=None,
+                           cancelado=None) -> int:
     """Percorre os registos de metadados nao alocados (a MFT, no NTFS).
 
     E aqui que aparecem os ficheiros apagados em NTFS: ao eliminar, a entrada
@@ -287,8 +288,11 @@ def _registos_nao_alocados(fs, partition, entries, inodes, progresso=None,
     examinados = 0
     for inode in range(primeiro, ultimo + 1):
         examinados += 1
-        if progresso is not None and examinados % PASSO_DO_PROGRESSO == 0:
-            progresso(ja_feitos + examinados, total)
+        if examinados % PASSO_DO_PROGRESSO == 0:
+            if progresso is not None:
+                progresso(ja_feitos + examinados, total)
+            if cancelado is not None and cancelado():
+                break
         if inode in inodes:
             continue
         try:
@@ -343,7 +347,8 @@ def _walk(fs, directory, parent_path, partition, entries, visited, depth,
 
 
 def scan_deleted_entries(device_path: str, diagnostico: dict | None = None,
-                         progresso=None, ao_encontrar=None) -> list[dict]:
+                         progresso=None, ao_encontrar=None,
+                         cancelado=None) -> list[dict]:
     """Lista as entradas apagadas (nao alocadas) do dispositivo indicado.
 
     Combina tres fontes, por esta ordem: as entradas ainda presentes nas
@@ -360,7 +365,9 @@ def scan_deleted_entries(device_path: str, diagnostico: dict | None = None,
     possivel ler o sistema de ficheiros". ``progresso`` e chamado com
     ``(registos_feitos, total_estimado)`` ao longo do varrimento e
     ``ao_encontrar`` e chamado com cada entrada assim que e encontrada, para a
-    interface a poder mostrar sem esperar pelo fim.
+    interface a poder mostrar sem esperar pelo fim. ``cancelado`` e consultado
+    ao longo do varrimento: devolvendo True, a analise para e devolve o que ja
+    encontrou.
     """
     tsk = _require_pytsk3()
     image = _abrir_imagem(device_path)
@@ -373,6 +380,8 @@ def scan_deleted_entries(device_path: str, diagnostico: dict | None = None,
     }
 
     for partition in _partitions(image):
+        if cancelado is not None and cancelado():
+            break
         resumo["particoes"] += 1
         try:
             fs = tsk.FS_Info(image, offset=partition["offset"])
@@ -392,6 +401,7 @@ def scan_deleted_entries(device_path: str, diagnostico: dict | None = None,
         resumo["registos_examinados"] += _registos_nao_alocados(
             fs, partition, entries, inodes, progresso,
             resumo["registos_examinados"], _total_estimado(fs), ao_encontrar,
+            cancelado,
         )
 
     if diagnostico is not None:

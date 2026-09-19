@@ -110,7 +110,14 @@ O estado aparece sempre no topo, com um ponto colorido e a barra de progresso:
 | Em análise | amarelo | dispositivo a ser analisado |
 | Em recuperação | amarelo | ficheiros seleccionados a serem recuperados |
 | Concluído | verde | operação terminada com sucesso |
+| Interrompido | cinzento | parada pelo utilizador; fica o que já foi feito |
 | Erro | vermelho | ocorreu uma falha durante a operação |
+
+A barra mostra sempre a percentagem. Enquanto a operação decorre há um botão
+**Parar operação** ao lado da lista: a análise devolve os ficheiros já
+encontrados (que podem ser recuperados à mesma) e a recuperação guarda os
+ficheiros já gravados, registando a operação com a observação de que foi
+interrompida.
 
 ### Histórico das operações
 
@@ -219,7 +226,7 @@ py -3.11 -m unittest discover -s tests -t . -v      # suite completa
 py -3.11 -m unittest tests.test_carving -v          # um módulo isolado
 ```
 
-277 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
+291 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
 sintéticas criadas em ficheiros temporários — nenhum dispositivo físico é tocado. Os
 testes da GUI correm com Qt em modo *offscreen* e ficam em `skipped` se o PySide6 não
 estiver instalado; os de `report.py` ficam em `skipped` sem o ReportLab.

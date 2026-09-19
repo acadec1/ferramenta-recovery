@@ -16,6 +16,8 @@ import subprocess
 import sys
 
 DEVICE_PATH_TEMPLATE = r"\\.\PhysicalDrive{}"
+PREFIXO_DE_DISPOSITIVO = "\\\\.\\"  # \\.\ — prefixo dos dispositivos do Windows
+PREFIXO_DE_DISCO_FISICO = PREFIXO_DE_DISPOSITIVO + "PHYSICALDRIVE"
 
 GENERIC_READ = 0x80000000
 FILE_SHARE_READ = 0x00000001
@@ -273,12 +275,41 @@ def read_aligned(device, offset: int, length: int,
     return bytes(buffer[avanco:avanco + length])
 
 
-def device_size(device) -> int | None:
-    """Tamanho de um ficheiro ou dispositivo ja aberto, se for possivel saber."""
+def device_size(device, caminho: str | None = None) -> int | None:
+    """Tamanho de um ficheiro ou dispositivo ja aberto, se for possivel saber.
+
+    Num ficheiro basta procurar o fim. Num disco em bruto isso nem sempre
+    funciona, por isso o tamanho e pedido ao sistema a partir do caminho — sem
+    ele nao havia percentagem de progresso, apenas uma barra em movimento.
+    """
     try:
         posicao = device.seek(0, os.SEEK_END)
         device.seek(0)
-        return int(posicao) if posicao else None
+        if posicao:
+            return int(posicao)
+    except OSError:
+        pass
+    return tamanho_do_caminho(caminho)
+
+
+def tamanho_do_caminho(caminho: str | None) -> int | None:
+    r"""Tamanho de \.\PhysicalDriveN, de \.\X: ou de um ficheiro de imagem."""
+    if not caminho:
+        return None
+    normalizado = caminho.upper()
+    if normalizado.startswith(PREFIXO_DE_DISCO_FISICO):
+        try:
+            return get_drive_size(int(normalizado[len(PREFIXO_DE_DISCO_FISICO):]))
+        except (ValueError, OSError):
+            return None
+    if normalizado.startswith(PREFIXO_DE_DISPOSITIVO) and normalizado.endswith(":"):
+        letra = normalizado[len(PREFIXO_DE_DISPOSITIVO):][:1]
+        for volume in list_logical_volumes():
+            if volume["letter"].upper() == letra:
+                return volume["size_bytes"]
+        return None
+    try:
+        return os.path.getsize(caminho)
     except OSError:
         return None
 

@@ -97,7 +97,7 @@ def _nome_do_candidato(signature: dict, indice: int, inicio: int) -> str:
 
 
 def find_by_signature(device_path: str, file_type: str, progresso=None,
-                      ao_encontrar=None) -> list[dict]:
+                      ao_encontrar=None, cancelado=None) -> list[dict]:
     """Localiza (sem extrair) os ficheiros do tipo indicado em ``device_path``.
 
     Percorre o dispositivo do principio ao fim a procura do par
@@ -106,8 +106,10 @@ def find_by_signature(device_path: str, file_type: str, progresso=None,
     ``extension`` — o conteudo so e lido do disco quando se extrai, o que
     permite escolher a pasta de destino depois da analise.
 
-    ``progresso`` e chamado com ``(bytes_lidos, total_ou_None)`` a cada bloco e
-    ``ao_encontrar`` com cada candidato assim que e localizado.
+    ``progresso`` e chamado com ``(bytes_lidos, total)`` a cada bloco,
+    ``ao_encontrar`` com cada candidato assim que e localizado, e ``cancelado``
+    e consultado entre blocos: devolvendo True, o varrimento para e devolve o
+    que ja encontrou.
     """
     signature = _signature(file_type)
     header = signature["header"]
@@ -123,9 +125,11 @@ def find_by_signature(device_path: str, file_type: str, progresso=None,
     file_start = 0
 
     with open(device_path, "rb", buffering=0) as device:
-        total = device_size(device)
+        total = device_size(device, device_path)
         lidos = 0
         while True:
+            if cancelado is not None and cancelado():
+                break
             chunk = _read_chunk(device, CHUNK_SIZE)
             final = len(chunk) < CHUNK_SIZE
             lidos += len(chunk)

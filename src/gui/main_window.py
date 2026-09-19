@@ -252,6 +252,7 @@ class MainWindow(QMainWindow):
         self.devices_page.imagem_pedida.connect(self.escolher_imagem)
         self.botao_elevar.clicked.connect(self.reiniciar_como_administrador)
         self.results_page.recuperacao_pedida.connect(self.recuperar)
+        self.results_page.paragem_pedida.connect(self.parar_operacao)
         self.summary_page.relatorio_pedido.connect(self.gerar_relatorio_da_operacao)
         self.history_page.relatorio_pedido.connect(
             self.gerar_relatorio_de_operacao_antiga
@@ -412,8 +413,16 @@ class MainWindow(QMainWindow):
         self.trabalho.progresso.connect(self.results_page.definir_progresso)
         self.trabalho.encontrados.connect(self.results_page.acrescentar_entradas)
         self.trabalho.concluido.connect(self._analise_concluida)
+        self.trabalho.interrompido.connect(self._analise_interrompida)
         self.trabalho.falhou.connect(self._analise_falhada)
         self.trabalho.start()
+
+    def parar_operacao(self) -> None:
+        """Pede ao trabalho em curso que pare, guardando o que ja fez."""
+        if self.trabalho is None:
+            return
+        self.trabalho.parar()
+        self.notificar("A parar a operacao...", "aviso")
 
     def _analise_concluida(self, entradas: list, diagnostico: dict) -> None:
         self._bloquear_accoes(False)
@@ -423,6 +432,17 @@ class MainWindow(QMainWindow):
             *self._resumo_do_varrimento(
                 self.dispositivo_actual, entradas, diagnostico
             )
+        )
+
+    def _analise_interrompida(self, entradas: list, _diagnostico: dict) -> None:
+        """A analise parou a pedido: o que ja foi encontrado continua utilizavel."""
+        self._bloquear_accoes(False)
+        self.entradas_encontradas = list(entradas)
+        self.results_page.interromper()
+        self.notificar(
+            "Analise interrompida: %d ficheiros encontrados ate ao momento."
+            % len(entradas),
+            "aviso",
         )
 
     def _analise_falhada(self, erro: str) -> None:
@@ -496,11 +516,21 @@ class MainWindow(QMainWindow):
         )
         self.trabalho.progresso.connect(self.results_page.definir_progresso)
         self.trabalho.concluido.connect(self._recuperacao_concluida)
+        self.trabalho.interrompido.connect(self._recuperacao_interrompida)
         self.trabalho.falhou.connect(self._recuperacao_falhada)
         self.trabalho.start()
 
-    def _recuperacao_concluida(self, resultados: list) -> None:
+    def _recuperacao_interrompida(self, resultados: list) -> None:
+        """A recuperacao parou a pedido: guarda-se o que ja foi recuperado."""
+        self.results_page.interromper(
+            "%d ficheiros recuperados antes de parar" % len(resultados)
+        )
+        self._recuperacao_concluida(resultados, interrompida=True)
+
+    def _recuperacao_concluida(self, resultados: list,
+                               interrompida: bool = False) -> None:
         self._bloquear_accoes(False)
+        self.results_page.terminar_recuperacao()
         totais = operacao.resumo(len(self.entradas_encontradas), resultados)
         identificador = self.historico.log_operation(
             ficheiros=resultados,
@@ -510,14 +540,20 @@ class MainWindow(QMainWindow):
             metodo=self.metodo_actual,
             pasta_destino=self.destino_actual,
             app_user=self.user.get("username"),
-            observacoes=self._observacoes(resultados),
+            observacoes=self._observacoes(resultados, interrompida),
             **totais,
             **self.dados_do_dispositivo,
         )
         operacao_registada = self.historico.get_operations(identificador)[0]
         self.summary_page.mostrar_operacao(operacao_registada, resultados)
-        self.results_page.terminar_analise(self.dispositivo_actual)
         self.ir_para("resumo")
+        if interrompida:
+            self.notificar(
+                "Recuperacao interrompida: %d ficheiros recuperados para %s."
+                % (totais["recuperados"], self.destino_actual),
+                "aviso",
+            )
+            return
         self.notificar(
             "%d de %d ficheiros recuperados para %s."
             % (totais["recuperados"], totais["seleccionados"], self.destino_actual),
@@ -530,13 +566,16 @@ class MainWindow(QMainWindow):
         self.notificar("Falha na recuperacao: %s" % erro, "erro")
 
     @staticmethod
-    def _observacoes(resultados: list[dict]) -> str:
-        """Erros encontrados, para ficarem registados no relatorio."""
-        erros = [
+    def _observacoes(resultados: list[dict], interrompida: bool = False) -> str:
+        """Erros encontrados e paragens, para ficarem registados no relatorio."""
+        notas = []
+        if interrompida:
+            notas.append("operacao interrompida pelo utilizador")
+        notas += [
             "%s: %s" % (r.get("nome"), r.get("erro"))
             for r in resultados if r.get("erro")
         ]
-        return "; ".join(erros)
+        return "; ".join(notas)
 
     def _bloquear_accoes(self, bloqueado: bool) -> None:
         """Impede iniciar outra operacao enquanto uma esta a decorrer."""

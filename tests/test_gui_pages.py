@@ -24,6 +24,7 @@ try:
         CONCLUIDO,
         EM_ANALISE,
         ERRO,
+        INTERROMPIDO,
         Banner,
         CartaoDeDispositivo,
         CartaoDeEstatistica,
@@ -411,6 +412,47 @@ class ResultsPageTest(PainelBase):
         self.assertEqual(pagina.estado.estado, CONCLUIDO)
         self.assertIn("2 ficheiros encontrados", pagina.etiqueta_contagem.text())
 
+    def test_botao_de_paragem_so_aparece_com_operacao(self):
+        pagina = self.registar(ResultsPage())
+        self.assertFalse(pagina.botao_parar.isVisibleTo(pagina))
+
+        pagina.iniciar_analise(r"\\.\D:", METODO_METADADOS)
+        self.assertTrue(pagina.botao_parar.isVisibleTo(pagina))
+
+        pagina.terminar_analise()
+        self.assertFalse(pagina.botao_parar.isVisibleTo(pagina))
+
+    def test_pedido_de_paragem(self):
+        pagina = self.registar(ResultsPage())
+        pedidos = self.capturar(pagina.paragem_pedida)
+        pagina.iniciar_analise(r"\\.\D:", METODO_METADADOS)
+
+        pagina.botao_parar.click()
+
+        self.assertEqual(len(pedidos), 1)
+        self.assertFalse(pagina.botao_parar.isEnabled())  # evita cliques repetidos
+        self.assertIn("A parar", pagina.botao_parar.text())
+
+    def test_estado_interrompido(self):
+        pagina = self.registar(ResultsPage())
+        pagina.iniciar_analise(r"\\.\D:", METODO_METADADOS)
+        pagina.acrescentar_entradas(ENTRADAS)
+
+        pagina.interromper()
+
+        self.assertEqual(pagina.estado.estado, INTERROMPIDO)
+        self.assertIn("2 ficheiros encontrados", pagina.estado.detalhe.text())
+        self.assertFalse(pagina.botao_parar.isVisibleTo(pagina))
+        self.assertEqual(pagina.tabela.rowCount(), 2)  # o que foi encontrado fica
+
+    def test_paragem_tambem_na_recuperacao(self):
+        pagina = self.registar(ResultsPage())
+        pagina.iniciar_recuperacao(5, r"D:\Recuperados")
+        self.assertTrue(pagina.botao_parar.isVisibleTo(pagina))
+
+        pagina.terminar_recuperacao()
+        self.assertFalse(pagina.botao_parar.isVisibleTo(pagina))
+
     def test_recuperacao_usa_a_mesma_barra(self):
         self.pagina.iniciar_recuperacao(3, r"D:\Recuperados")
         self.assertTrue(self.pagina.estado.isVisibleTo(self.pagina))
@@ -562,6 +604,7 @@ class EstadoDaOperacaoTest(PainelBase):
         for estado, rotulo in (
             (EM_ANALISE, "Em analise"),
             (CONCLUIDO, "Concluido"),
+            (INTERROMPIDO, "Interrompido"),
             (ERRO, "Erro"),
         ):
             self.widget.definir_estado(estado, "detalhe")
@@ -583,6 +626,20 @@ class EstadoDaOperacaoTest(PainelBase):
     def test_progresso_sem_total_fica_indeterminado(self):
         self.widget.definir_progresso(10, 0)
         self.assertEqual(self.widget.barra.maximum(), 0)
+        self.assertIn("a processar", self.widget.barra.format())
+
+    def test_barra_mostra_a_percentagem(self):
+        self.widget.definir_estado(EM_ANALISE)
+        self.widget.definir_progresso(42, 100)
+        self.assertTrue(self.widget.barra.isTextVisible())
+        self.assertEqual(self.widget.barra.format(), "%p%")
+        self.assertEqual(self.widget.barra.text(), "42%")
+
+    def test_interrompido_mantem_a_percentagem_atingida(self):
+        self.widget.definir_estado(EM_ANALISE)
+        self.widget.definir_progresso(30, 100)
+        self.widget.definir_estado(INTERROMPIDO)
+        self.assertEqual(self.widget.percentagem(), 30)
 
     def test_estado_desconhecido_volta_a_aguardando(self):
         self.widget.definir_estado("inventado")
@@ -622,7 +679,8 @@ class TrabalhosTest(PainelBase):
         concluidos = self.capturar(trabalho.concluido)
         progressos = self.capturar(trabalho.progresso)
 
-        def analisar(device_path, metodo, progresso=None, ao_encontrar=None):
+        def analisar(device_path, metodo, progresso=None, ao_encontrar=None,
+                     cancelado=None):
             progresso(5, 10)
             return [{"nome": "x.bin"}], {"metodo": metodo}
 
@@ -636,7 +694,8 @@ class TrabalhosTest(PainelBase):
         trabalho = TrabalhoDeAnalise(r"\\.\D:", METODO_METADADOS)
         lotes = self.capturar(trabalho.encontrados)
 
-        def analisar(device_path, metodo, progresso=None, ao_encontrar=None):
+        def analisar(device_path, metodo, progresso=None, ao_encontrar=None,
+                     cancelado=None):
             for numero in range(3):
                 ao_encontrar({"nome": "f%d.bin" % numero})
             return [], {}
@@ -648,6 +707,36 @@ class TrabalhosTest(PainelBase):
         # dois no primeiro lote, o terceiro no lote final
         self.assertEqual([len(lote) for lote in lotes], [2, 1])
         self.assertEqual(lotes[0][0]["nome"], "f0.bin")
+
+    def test_analise_parada_emite_interrompido(self):
+        trabalho = TrabalhoDeAnalise(r"\\.\D:", METODO_METADADOS)
+        interrompidos = self.capturar(trabalho.interrompido)
+        concluidos = self.capturar(trabalho.concluido)
+
+        def analisar(device_path, metodo, progresso=None, ao_encontrar=None,
+                     cancelado=None):
+            trabalho.parar()  # como se o utilizador carregasse a meio
+            self.assertTrue(cancelado())
+            return [{"nome": "parcial.bin"}], {}
+
+        with mock.patch("src.gui.workers.operacao.analisar", side_effect=analisar):
+            trabalho.run()
+
+        self.assertEqual(concluidos, [])
+        self.assertEqual(interrompidos[0], ([{"nome": "parcial.bin"}], {}))
+
+    def test_recuperacao_parada_emite_interrompido(self):
+        trabalho = TrabalhoDeRecuperacao(r"\\.\D:", [{"nome": "x"}], "D:/saida")
+        interrompidos = self.capturar(trabalho.interrompido)
+
+        def recuperar(device_path, entradas, destino, progresso=None, cancelado=None):
+            trabalho.parar()
+            return [{"estado": ESTADO_RECUPERADO}]
+
+        with mock.patch("src.gui.workers.operacao.recuperar", side_effect=recuperar):
+            trabalho.run()
+
+        self.assertEqual(interrompidos[0], [{"estado": ESTADO_RECUPERADO}])
 
     def test_analise_falhada(self):
         trabalho = TrabalhoDeAnalise(r"\\.\D:", METODO_METADADOS)

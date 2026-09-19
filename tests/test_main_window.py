@@ -18,7 +18,7 @@ try:
     from PySide6.QtWidgets import QApplication
 
     from src.gui import main_window
-    from src.gui.widgets import CONCLUIDO, EM_ANALISE, ERRO
+    from src.gui.widgets import CONCLUIDO, EM_ANALISE, ERRO, INTERROMPIDO
 except ImportError:  # pragma: no cover - depende do ambiente
     main_window = None
 
@@ -77,23 +77,29 @@ def resultado(nome="relatorio.docx", estado=ESTADO_RECUPERADO, erro=None):
     }
 
 
-def fabrica_de_analise(entradas=(), diagnostico=None, erro=None, progresso=(50, 100)):
+def fabrica_de_analise(entradas=(), diagnostico=None, erro=None, progresso=(50, 100),
+                       parar_a_meio=False):
     """Substituto sincrono de TrabalhoDeAnalise, com resultado pre-definido."""
 
     class AnaliseFalsa(QObject):
         progresso_sinal = Signal(int, int)
         encontrados = Signal(list)
         concluido = Signal(list, dict)
+        interrompido = Signal(list, dict)
         falhou = Signal(str)
 
         def __init__(self, device_path, metodo, parent=None):
             super().__init__()
             self.device_path = device_path
             self.metodo = metodo
+            self.parado = False
             AnaliseFalsa.ultima = self
 
         def isRunning(self):  # noqa: N802 (nome imposto pelo Qt)
             return False
+
+        def parar(self):
+            self.parado = True
 
         def start(self):
             if progresso:
@@ -103,18 +109,22 @@ def fabrica_de_analise(entradas=(), diagnostico=None, erro=None, progresso=(50, 
                 return
             if entradas:  # como na analise real: primeiro os lotes, depois o fim
                 self.encontrados.emit(list(entradas))
+            if parar_a_meio:
+                self.interrompido.emit(list(entradas), dict(diagnostico or DIAGNOSTICO))
+                return
             self.concluido.emit(list(entradas), dict(diagnostico or DIAGNOSTICO))
 
     AnaliseFalsa.progresso = AnaliseFalsa.progresso_sinal
     return AnaliseFalsa
 
 
-def fabrica_de_recuperacao(resultados=(), erro=None):
+def fabrica_de_recuperacao(resultados=(), erro=None, parar_a_meio=False):
     """Substituto sincrono de TrabalhoDeRecuperacao."""
 
     class RecuperacaoFalsa(QObject):
         progresso_sinal = Signal(int, int)
         concluido = Signal(list)
+        interrompido = Signal(list)
         falhou = Signal(str)
 
         def __init__(self, device_path, entradas, destino, parent=None):
@@ -122,15 +132,21 @@ def fabrica_de_recuperacao(resultados=(), erro=None):
             self.device_path = device_path
             self.entradas = list(entradas)
             self.destino = destino
+            self.parado = False
             RecuperacaoFalsa.ultima = self
 
         def isRunning(self):  # noqa: N802 (nome imposto pelo Qt)
             return False
 
+        def parar(self):
+            self.parado = True
+
         def start(self):
             self.progresso_sinal.emit(1, max(1, len(self.entradas)))
             if erro is not None:
                 self.falhou.emit(erro)
+            elif parar_a_meio:
+                self.interrompido.emit([dict(r) for r in resultados])
             else:
                 self.concluido.emit([dict(r) for r in resultados])
 
@@ -176,14 +192,16 @@ class JanelaBase(unittest.TestCase):
         self.addCleanup(janela.close)
         return janela
 
-    def _com_analise(self, janela, entradas=ENTRADAS, diagnostico=None, erro=None):
+    def _com_analise(self, janela, entradas=ENTRADAS, diagnostico=None, erro=None,
+                     parar_a_meio=False):
         self._patch("TrabalhoDeAnalise",
-                    new=fabrica_de_analise(entradas, diagnostico, erro))
+                    new=fabrica_de_analise(entradas, diagnostico, erro,
+                                           parar_a_meio=parar_a_meio))
         return janela
 
-    def _com_recuperacao(self, resultados=(), erro=None):
+    def _com_recuperacao(self, resultados=(), erro=None, parar_a_meio=False):
         self._patch("TrabalhoDeRecuperacao",
-                    new=fabrica_de_recuperacao(resultados, erro))
+                    new=fabrica_de_recuperacao(resultados, erro, parar_a_meio))
 
     def _janela_analisada(self, user=ADMIN, entradas=ENTRADAS, metodo=METODO_METADADOS):
         """Janela com um disco seleccionado e a analise ja concluida."""
@@ -466,6 +484,49 @@ class RecuperacaoTest(JanelaBase):
         self.assertEqual(janela.results_page.estado.estado, ERRO)
         self.assertIn("disco desligado", janela.banner.text())
         self.assertEqual(self.log.get_operations(), [])
+
+
+class ParagemTest(JanelaBase):
+    """O utilizador pode parar a operacao e fica com o que ja foi feito."""
+
+    def test_botao_pede_a_paragem_ao_trabalho(self):
+        janela = self._com_analise(self._janela(ADMIN))
+        janela.varrer(DISPOSITIVO)  # a fabrica termina de imediato
+        janela.trabalho.parado = False
+
+        janela.results_page.paragem_pedida.emit()
+
+        self.assertTrue(janela.trabalho.parado)
+        self.assertEqual(janela.banner.property("tipo"), "aviso")
+
+    def test_analise_interrompida_mantem_o_que_encontrou(self):
+        janela = self._com_analise(self._janela(ADMIN), parar_a_meio=True)
+
+        janela.varrer(DISPOSITIVO)
+
+        self.assertEqual(janela.results_page.estado.estado, INTERROMPIDO)
+        self.assertEqual(janela.results_page.tabela.rowCount(), 2)
+        self.assertEqual(len(janela.entradas_encontradas), 2)
+        self.assertIn("interrompida", janela.banner.text())
+
+    def test_recuperacao_interrompida_fica_registada(self):
+        janela = self._janela_analisada()
+        self._com_recuperacao([resultado()], parar_a_meio=True)
+        self._patch("MainWindow.escolher_pasta", return_value=self.tmp)
+        janela.results_page.tabela.selectAll()
+
+        janela.results_page.painel.botao_accao.click()
+
+        operacao = self.log.get_operations()[0]
+        self.assertEqual(operacao["recuperados"], 1)
+        self.assertIn("interrompida pelo utilizador", operacao["observacoes"])
+        self.assertEqual(janela.results_page.estado.estado, INTERROMPIDO)
+        self.assertIn("interrompida", janela.banner.text())
+
+    def test_parar_sem_operacao_nao_rebenta(self):
+        janela = self._janela(ADMIN)
+        janela.parar_operacao()
+        self.assertIsNone(janela.trabalho)
 
 
 class RelatorioDaOperacaoTest(JanelaBase):

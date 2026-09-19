@@ -29,6 +29,7 @@ from src.gui.widgets import (
     EM_ANALISE,
     EM_RECUPERACAO,
     ERRO,
+    INTERROMPIDO,
     CabecalhoDePainel,
     EstadoDaOperacao,
     PainelDeDetalhes,
@@ -49,6 +50,7 @@ class ResultsPage(QWidget):
     """Lista dos ficheiros recuperaveis, preenchida durante a analise."""
 
     recuperacao_pedida = Signal(list)
+    paragem_pedida = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -60,10 +62,14 @@ class ResultsPage(QWidget):
         self.botao_selecionar_tudo = QPushButton("Seleccionar tudo")
         self.botao_selecionar_tudo.setObjectName(theme.BOTAO_SECUNDARIO)
         self.botao_selecionar_tudo.setEnabled(False)
+        self.botao_parar = QPushButton("Parar operacao")
+        self.botao_parar.setObjectName(theme.BOTAO_PARAR)
+        self.botao_parar.setVisible(False)
 
         topo = QHBoxLayout()
         topo.addWidget(self.cabecalho, 1)
         topo.addWidget(self.etiqueta_contagem)
+        topo.addWidget(self.botao_parar)
         topo.addWidget(self.botao_selecionar_tudo)
 
         # So aparece quando ha uma operacao a decorrer ou acabada de terminar.
@@ -102,6 +108,7 @@ class ResultsPage(QWidget):
 
         self.tabela.itemSelectionChanged.connect(self.mostrar_detalhes)
         self.botao_selecionar_tudo.clicked.connect(self.tabela.selectAll)
+        self.botao_parar.clicked.connect(self._pedir_paragem)
         self.painel.botao_accao.clicked.connect(self._pedir_recuperacao)
 
     # ------------------------------------------------------ analise em curso
@@ -119,6 +126,7 @@ class ResultsPage(QWidget):
             "%s • %s" % (device_path, NOMES_DOS_METODOS.get(metodo, metodo)),
         )
         self.estado.definir_progresso(0, 0)
+        self._mostrar_paragem(True)
 
     def acrescentar_entradas(self, entradas: list[dict]) -> None:
         """Junta a lista as entradas encontradas ate agora."""
@@ -131,6 +139,7 @@ class ResultsPage(QWidget):
 
     def terminar_analise(self, device_path: str = "") -> None:
         """Fecha a fase de analise, mantendo o resultado a vista."""
+        self._mostrar_paragem(False)
         self.estado.definir_estado(
             CONCLUIDO, "%d ficheiros encontrados" % len(self.entradas)
         )
@@ -139,8 +148,18 @@ class ResultsPage(QWidget):
             % (len(self.entradas), (" em %s" % device_path) if device_path else "")
         )
 
+    def interromper(self, detalhe: str = "") -> None:
+        """Marca a operacao como interrompida a pedido do utilizador."""
+        self._mostrar_paragem(False)
+        self.estado.setVisible(True)
+        self.estado.definir_estado(
+            INTERROMPIDO,
+            detalhe or "%d ficheiros encontrados antes de parar" % len(self.entradas),
+        )
+
     def falhar(self, erro: str) -> None:
         """Mostra o estado de erro na propria pagina da analise."""
+        self._mostrar_paragem(False)
         self.estado.setVisible(True)
         self.estado.definir_estado(ERRO, erro)
 
@@ -150,6 +169,25 @@ class ResultsPage(QWidget):
             EM_RECUPERACAO, "%d ficheiros para %s" % (quantidade, destino)
         )
         self.estado.definir_progresso(0, quantidade)
+        self._mostrar_paragem(True)
+
+    def terminar_recuperacao(self) -> None:
+        self._mostrar_paragem(False)
+
+    def _mostrar_paragem(self, em_curso: bool) -> None:
+        """O botao de parar so existe enquanto ha alguma coisa a decorrer."""
+        self.botao_parar.setVisible(em_curso)
+        self.botao_parar.setEnabled(em_curso)
+        if em_curso:
+            self.botao_parar.setText("Parar operacao")
+        self.painel.botao_accao.setEnabled(
+            not em_curso and bool(self.entradas_selecionadas())
+        )
+
+    def _pedir_paragem(self) -> None:
+        self.botao_parar.setEnabled(False)
+        self.botao_parar.setText("A parar...")
+        self.paragem_pedida.emit()
 
     def definir_progresso(self, feitos: int, total: int) -> None:
         self.estado.definir_progresso(feitos, total)

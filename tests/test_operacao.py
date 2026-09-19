@@ -44,7 +44,8 @@ class TipoDoFicheiroTest(unittest.TestCase):
 
 class AnaliseTest(unittest.TestCase):
     def test_metodo_de_metadados(self):
-        def scan(device_path, diagnostico=None, progresso=None, ao_encontrar=None):
+        def scan(device_path, diagnostico=None, progresso=None,
+                 ao_encontrar=None, cancelado=None):
             if diagnostico is not None:
                 diagnostico.update({"particoes": 1, "sistemas_de_ficheiros": 1})
             return [dict(ENTRADA_DE_METADADOS)]
@@ -63,7 +64,8 @@ class AnaliseTest(unittest.TestCase):
         self.assertEqual(diagnostico["particoes"], 1)
 
     def test_metodo_de_carving_percorre_todos_os_tipos(self):
-        def procurar(device_path, tipo, progresso=None, ao_encontrar=None):
+        def procurar(device_path, tipo, progresso=None, ao_encontrar=None,
+                     cancelado=None):
             return [dict(CANDIDATO_DE_CARVING, type=tipo, name="%s_1.bin" % tipo)]
 
         with mock.patch.object(operacao.carving, "find_by_signature",
@@ -80,7 +82,8 @@ class AnaliseTest(unittest.TestCase):
     def test_progresso_do_carving_soma_os_tipos(self):
         recebidos = []
 
-        def procurar(device_path, tipo, progresso=None, ao_encontrar=None):
+        def procurar(device_path, tipo, progresso=None, ao_encontrar=None,
+                     cancelado=None):
             progresso(50, 100)  # metade deste tipo
             return []
 
@@ -98,7 +101,8 @@ class AnaliseTest(unittest.TestCase):
         """A lista deve preencher-se enquanto a analise decorre."""
         vistas = []
 
-        def scan(device_path, diagnostico=None, progresso=None, ao_encontrar=None):
+        def scan(device_path, diagnostico=None, progresso=None,
+                 ao_encontrar=None, cancelado=None):
             for nome in ("a.txt", "b.jpg"):
                 ao_encontrar(dict(ENTRADA_DE_METADADOS, name=nome))
             return [dict(ENTRADA_DE_METADADOS, name=n) for n in ("a.txt", "b.jpg")]
@@ -114,7 +118,8 @@ class AnaliseTest(unittest.TestCase):
     def test_candidatos_de_carving_entregues_durante_a_analise(self):
         vistas = []
 
-        def procurar(device_path, tipo, progresso=None, ao_encontrar=None):
+        def procurar(device_path, tipo, progresso=None, ao_encontrar=None,
+                     cancelado=None):
             candidato = dict(CANDIDATO_DE_CARVING, name="%s_1.bin" % tipo)
             ao_encontrar(candidato)
             return [candidato]
@@ -125,6 +130,25 @@ class AnaliseTest(unittest.TestCase):
 
         self.assertEqual(len(vistas), len(operacao.carving.supported_types()))
         self.assertTrue(all(e["metodo"] == METODO_CARVING for e in vistas))
+
+    def test_analise_para_a_pedido(self):
+        """Parando, devolve-se o que ja foi encontrado."""
+        chamadas = []
+
+        def procurar(device_path, tipo, progresso=None, ao_encontrar=None,
+                     cancelado=None):
+            chamadas.append(tipo)
+            return [dict(CANDIDATO_DE_CARVING, name="%s_1.bin" % tipo)]
+
+        with mock.patch.object(operacao.carving, "find_by_signature",
+                               side_effect=procurar):
+            entradas, _ = operacao.analisar(
+                DISPOSITIVO, METODO_CARVING, cancelado=lambda: len(chamadas) >= 2
+            )
+
+        # para depois do segundo tipo, em vez de percorrer todos
+        self.assertEqual(len(chamadas), 2)
+        self.assertEqual(len(entradas), 2)
 
     def test_metodo_desconhecido(self):
         with self.assertRaises(ValueError):
@@ -246,6 +270,30 @@ class RecuperacaoTest(unittest.TestCase):
 
         self.assertEqual(resultados[0]["estado"], ESTADO_FALHADO)
         self.assertIn("integridade", resultados[0]["erro"])
+
+    def test_recuperacao_para_a_pedido(self):
+        entradas = [
+            dict(ENTRADA_DE_METADADOS, nome="a.bin", metodo=METODO_METADADOS),
+            dict(ENTRADA_DE_METADADOS, nome="b.bin", metodo=METODO_METADADOS),
+            dict(ENTRADA_DE_METADADOS, nome="c.bin", metodo=METODO_METADADOS),
+        ]
+        with mock.patch.object(operacao.recovery, "recover_file",
+                               side_effect=self._escrever()):
+            feitos = []
+
+            def cancelado():
+                return len(feitos) >= 2
+
+            def progresso(posicao, total):
+                feitos.append(posicao)
+
+            resultados = operacao.recuperar(
+                DISPOSITIVO, entradas, self.destino, progresso, cancelado
+            )
+
+        # os dois primeiros foram recuperados; o terceiro nem chegou a comecar
+        self.assertEqual([r["nome"] for r in resultados], ["a.bin", "b.bin"])
+        self.assertTrue(all(r["estado"] == ESTADO_RECUPERADO for r in resultados))
 
     def test_progresso_por_ficheiro(self):
         entradas = [

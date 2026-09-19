@@ -51,19 +51,24 @@ def _normalizar(entrada: dict, metodo: str) -> dict:
     }
 
 
-def analisar(device_path: str, metodo: str, progresso=None,
-             ao_encontrar=None) -> tuple[list[dict], dict]:
+def analisar(device_path: str, metodo: str, progresso=None, ao_encontrar=None,
+             cancelado=None) -> tuple[list[dict], dict]:
     """Analisa o dispositivo pelo metodo indicado.
 
     Devolve as entradas encontradas e um diagnostico com o que foi examinado.
     Se ``ao_encontrar`` for indicado, cada entrada e entregue assim que e
     localizada, ja normalizada, para a lista se ir preenchendo durante a
-    analise em vez de aparecer toda no fim.
+    analise em vez de aparecer toda no fim. ``cancelado`` permite interromper:
+    o que ja foi encontrado e devolvido na mesma.
     """
     if metodo == METODO_METADADOS:
-        return _analisar_por_metadados(device_path, progresso, ao_encontrar)
+        return _analisar_por_metadados(
+            device_path, progresso, ao_encontrar, cancelado
+        )
     if metodo == METODO_CARVING:
-        return _analisar_por_assinaturas(device_path, progresso, ao_encontrar)
+        return _analisar_por_assinaturas(
+            device_path, progresso, ao_encontrar, cancelado
+        )
     raise ValueError("metodo desconhecido: %r" % metodo)
 
 
@@ -78,22 +83,25 @@ def _entregar(metodo, ao_encontrar):
     return entregar
 
 
-def _analisar_por_metadados(device_path: str, progresso,
-                            ao_encontrar=None) -> tuple[list[dict], dict]:
+def _analisar_por_metadados(device_path: str, progresso, ao_encontrar=None,
+                            cancelado=None) -> tuple[list[dict], dict]:
     diagnostico: dict = {}
     entradas = filesystem_parser.scan_deleted_entries(
-        device_path, diagnostico, progresso, _entregar(METODO_METADADOS, ao_encontrar)
+        device_path, diagnostico, progresso,
+        _entregar(METODO_METADADOS, ao_encontrar), cancelado,
     )
     diagnostico["metodo"] = METODO_METADADOS
     return [_normalizar(e, METODO_METADADOS) for e in entradas], diagnostico
 
 
-def _analisar_por_assinaturas(device_path: str, progresso,
-                              ao_encontrar=None) -> tuple[list[dict], dict]:
+def _analisar_por_assinaturas(device_path: str, progresso, ao_encontrar=None,
+                              cancelado=None) -> tuple[list[dict], dict]:
     tipos = carving.supported_types()
     entradas: list[dict] = []
     entregar = _entregar(METODO_CARVING, ao_encontrar)
     for posicao, tipo in enumerate(tipos):
+        if cancelado is not None and cancelado():
+            break
         def avanco(lidos, total, posicao=posicao):
             """Junta o progresso dos varios tipos numa so barra."""
             if progresso is None:
@@ -104,7 +112,7 @@ def _analisar_por_assinaturas(device_path: str, progresso,
             progresso(posicao * total + lidos, len(tipos) * total)
 
         for candidato in carving.find_by_signature(
-            device_path, tipo, avanco, entregar
+            device_path, tipo, avanco, entregar, cancelado
         ):
             entradas.append(_normalizar(candidato, METODO_CARVING))
 
@@ -182,11 +190,12 @@ def recuperar_entrada(device_path: str, entrada: dict, destino: str) -> dict:
 
 
 def recuperar(device_path: str, entradas: list[dict], destino: str,
-              progresso=None) -> list[dict]:
+              progresso=None, cancelado=None) -> list[dict]:
     """Recupera as entradas indicadas para ``destino``.
 
     Devolve um resultado por ficheiro, com estado, hash e eventual erro. Um
-    ficheiro que falhe nao interrompe os restantes.
+    ficheiro que falhe nao interrompe os restantes, e ``cancelado`` permite
+    parar entre ficheiros, devolvendo o que ja foi recuperado.
     """
     validar_destino(device_path, destino)
     os.makedirs(destino, exist_ok=True)
@@ -194,6 +203,8 @@ def recuperar(device_path: str, entradas: list[dict], destino: str,
     resultados = []
     total = len(entradas)
     for posicao, entrada in enumerate(entradas, start=1):
+        if cancelado is not None and cancelado():
+            break
         resultados.append(recuperar_entrada(device_path, entrada, destino))
         if progresso is not None:
             progresso(posicao, total)

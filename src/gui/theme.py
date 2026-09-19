@@ -36,6 +36,7 @@ CORES = {
 # Nomes de objecto usados pelos paineis para se ligarem ao tema.
 BOTAO_PRIMARIO = "botaoPrimario"
 BOTAO_SECUNDARIO = "botaoSecundario"
+BOTAO_PARAR = "botaoParar"
 BARRA_LATERAL = "barraLateral"
 MENU_LATERAL = "menuLateral"
 SECCAO_LATERAL = "seccaoLateral"
@@ -371,6 +372,21 @@ QPushButton#{botao_secundario} {{
     background-color: {superficie};
     border: 1px solid {contorno_forte};
 }}
+QPushButton#{botao_parar} {{
+    background-color: {erro_clara};
+    color: {erro};
+    border: 1px solid {erro};
+    font-weight: bold;
+}}
+QPushButton#{botao_parar}:hover {{
+    background-color: {erro};
+    color: #ffffff;
+}}
+QPushButton#{botao_parar}:disabled {{
+    background-color: #f3f4f6;
+    color: #a5adb8;
+    border-color: {contorno};
+}}
 
 /* --------------------------------------------------------------- tabelas */
 QTreeWidget, QTableWidget {{
@@ -452,6 +468,7 @@ QStatusBar::item {{
     escolha_de_metodo=ESCOLHA_DE_METODO,
     botao_primario=BOTAO_PRIMARIO,
     botao_secundario=BOTAO_SECUNDARIO,
+    botao_parar=BOTAO_PARAR,
     **CORES,
 )
 
