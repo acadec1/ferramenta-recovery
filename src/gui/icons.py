@@ -81,6 +81,34 @@ DESENHOS = {
     ),
 }
 
+# Ilustracoes: desenhos maiores, com preenchimento, para dar corpo aos ecras
+# sem depender de imagens externas. A grelha e de 140x120.
+ILUSTRACOES = {
+    "recuperacao": (
+        '<ellipse cx="70" cy="108" rx="44" ry="6" fill="#dbe9ff"/>'
+        '<circle cx="70" cy="56" r="50" fill="#eef5ff"/>'
+        # ficheiro que esta a ser recuperado
+        '<path d="M50 16h26l14 14v44a5 5 0 0 1-5 5H50a5 5 0 0 1-5-5V21a5 5 0 0 1 5-5z"'
+        ' fill="#ffffff" stroke="#1668e3" stroke-width="2.6" stroke-linejoin="round"/>'
+        '<path d="M76 16v14h14" fill="none" stroke="#1668e3" stroke-width="2.6"'
+        ' stroke-linejoin="round"/>'
+        '<path d="M55 42h18M55 51h24M55 60h16" stroke="#9dc0f0" stroke-width="2.8"'
+        ' stroke-linecap="round"/>'
+        # disco de onde o ficheiro e recuperado
+        '<rect x="26" y="74" width="88" height="30" rx="7" fill="#ffffff"'
+        ' stroke="#1668e3" stroke-width="2.6"/>'
+        '<circle cx="44" cy="89" r="8" fill="none" stroke="#1668e3" stroke-width="2.4"/>'
+        '<circle cx="44" cy="89" r="2.2" fill="#1668e3"/>'
+        '<rect x="62" y="85" width="34" height="3.6" rx="1.8" fill="#9dc0f0"/>'
+        '<rect x="62" y="93" width="21" height="3.6" rx="1.8" fill="#cfe0fa"/>'
+        # seta de recuperacao
+        '<circle cx="101" cy="31" r="14" fill="#e2f6ec" stroke="#0f7b46"'
+        ' stroke-width="2.3"/>'
+        '<path d="M101 38V24M95 30l6-6 6 6" fill="none" stroke="#0f7b46"'
+        ' stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>'
+    ),
+}
+
 # Cores dos "chips" (quadrado colorido atras do icone), como na barra lateral e
 # nos cartoes de dispositivo.
 CHIPS = {
@@ -154,6 +182,33 @@ def chip(nome: str, cor: str = "azul", tamanho: int = 44, escala: int = 2) -> QP
         QSvgRenderer(desenho).render(
             pintor, QRectF(margem, margem, lado - 2 * margem, lado - 2 * margem)
         )
+    finally:
+        pintor.end()
+    imagem.setDevicePixelRatio(escala)
+    _cache[chave] = imagem
+    return imagem
+
+
+def ilustracao(nome: str, largura: int = 200, escala: int = 2) -> QPixmap:
+    """Desenha uma ilustracao (grelha de 140x120) com a largura pedida."""
+    if nome not in ILUSTRACOES:
+        raise KeyError("ilustracao desconhecida: %r" % nome)
+    chave = ("ilustracao", nome, largura, escala)
+    if chave in _cache:
+        return _cache[chave]
+
+    altura = round(largura * 120 / 140)
+    desenho = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 120" fill="none">'
+        "%s</svg>" % ILUSTRACOES[nome]
+    ).encode("utf-8")
+
+    imagem = QPixmap(largura * escala, altura * escala)
+    imagem.fill(Qt.transparent)
+    pintor = QPainter(imagem)
+    try:
+        pintor.setRenderHint(QPainter.Antialiasing, True)
+        QSvgRenderer(desenho).render(pintor)
     finally:
         pintor.end()
     imagem.setDevicePixelRatio(escala)

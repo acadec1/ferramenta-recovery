@@ -9,6 +9,7 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication, QLineEdit
 
     from src.gui import theme
@@ -163,6 +164,18 @@ class LoginPageTest(PainelBase):
 
     def test_password_escondida(self):
         self.assertEqual(self.pagina.campo_password.echoMode(), QLineEdit.Password)
+
+    def test_ilustracao_no_centro(self):
+        self.assertFalse(self.pagina.ilustracao.pixmap().isNull())
+        self.assertEqual(self.pagina.ilustracao.alignment(), Qt.AlignCenter)
+
+    def test_cartao_centrado_na_vertical(self):
+        """Espaco igual acima e abaixo: o cartao fica ao centro da janela."""
+        disposicao = self.pagina.layout()
+        acima = disposicao.itemAt(0)
+        abaixo = disposicao.itemAt(disposicao.count() - 1)
+        self.assertEqual(acima.spacerItem().expandingDirections(),
+                         abaixo.spacerItem().expandingDirections())
 
 
 class DevicesPageTest(PainelBase):
@@ -356,6 +369,17 @@ class IconesTest(PainelBase):
 
     def test_icone_para_botoes(self):
         self.assertFalse(icons.icone("lupa", 16).isNull())
+
+    def test_ilustracao_mantem_a_proporcao(self):
+        imagem = icons.ilustracao("recuperacao", 140)
+        proporcao = imagem.width() / imagem.height()
+        self.assertFalse(imagem.isNull())
+        self.assertAlmostEqual(proporcao, 140 / 120, places=1)
+        self.assertEqual(imagem.width() / imagem.devicePixelRatio(), 140)
+
+    def test_ilustracao_desconhecida(self):
+        with self.assertRaises(KeyError):
+            icons.ilustracao("inexistente")
 
 
 class ResultsPageTest(PainelBase):

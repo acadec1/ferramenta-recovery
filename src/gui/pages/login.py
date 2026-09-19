@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.gui import theme
+from src.gui import icons, theme
 
 TITULO = "Iniciar sessao"
 DESCRICAO = "Identifique-se para aceder a ferramenta de recuperacao."
@@ -32,16 +32,24 @@ class LoginPage(QWidget):
         self.user: dict | None = None
         self.setObjectName(theme.PAGINA_LOGIN)
 
+        self.ilustracao = QLabel()
+        self.ilustracao.setPixmap(icons.ilustracao("recuperacao", 190))
+        self.ilustracao.setAlignment(Qt.AlignCenter)
+
         titulo_app = QLabel("FRDA")
         titulo_app.setObjectName(theme.TITULO_JANELA)
+        titulo_app.setAlignment(Qt.AlignCenter)
         subtitulo_app = QLabel("Ferramenta de Recuperacao de Dados Apagados")
         subtitulo_app.setObjectName(theme.SUBTITULO)
+        subtitulo_app.setAlignment(Qt.AlignCenter)
 
         titulo = QLabel(TITULO)
         titulo.setObjectName(theme.TITULO_PAINEL)
+        titulo.setAlignment(Qt.AlignCenter)
         descricao = QLabel(DESCRICAO)
         descricao.setObjectName(theme.SUBTITULO)
         descricao.setWordWrap(True)
+        descricao.setAlignment(Qt.AlignCenter)
 
         self.campo_utilizador = QLineEdit()
         self.campo_utilizador.setPlaceholderText("utilizador")
@@ -58,30 +66,34 @@ class LoginPage(QWidget):
         self.etiqueta_erro = QLabel("")
         self.etiqueta_erro.setObjectName("erroFormulario")
         self.etiqueta_erro.setWordWrap(True)
+        self.etiqueta_erro.setAlignment(Qt.AlignCenter)
 
         self.botao_entrar = QPushButton("Entrar")
         self.botao_entrar.setObjectName(theme.BOTAO_PRIMARIO)
         self.botao_entrar.setDefault(True)
 
+        self.botao_entrar.setMinimumHeight(38)
         botoes = QHBoxLayout()
-        botoes.addStretch(1)
         botoes.addWidget(self.botao_entrar)
 
         cartao_conteudo = QVBoxLayout()
-        cartao_conteudo.setContentsMargins(28, 24, 28, 24)
-        cartao_conteudo.setSpacing(12)
+        cartao_conteudo.setContentsMargins(36, 28, 36, 30)
+        cartao_conteudo.setSpacing(10)
+        cartao_conteudo.addWidget(self.ilustracao, 0, Qt.AlignCenter)
         cartao_conteudo.addWidget(titulo_app)
         cartao_conteudo.addWidget(subtitulo_app)
-        cartao_conteudo.addSpacing(8)
+        cartao_conteudo.addSpacing(10)
         cartao_conteudo.addWidget(titulo)
         cartao_conteudo.addWidget(descricao)
+        cartao_conteudo.addSpacing(6)
         cartao_conteudo.addLayout(formulario)
         cartao_conteudo.addWidget(self.etiqueta_erro)
+        cartao_conteudo.addSpacing(4)
         cartao_conteudo.addLayout(botoes)
 
         cartao = QFrame()
         cartao.setObjectName(theme.CARTAO)
-        cartao.setFixedWidth(420)
+        cartao.setFixedWidth(440)
         cartao.setLayout(cartao_conteudo)
 
         centro = QHBoxLayout()
@@ -89,10 +101,12 @@ class LoginPage(QWidget):
         centro.addWidget(cartao)
         centro.addStretch(1)
 
+        # partes iguais em cima e em baixo: o cartao fica ao centro da janela
         disposicao = QVBoxLayout(self)
+        disposicao.setContentsMargins(0, 0, 0, 0)
         disposicao.addStretch(1)
         disposicao.addLayout(centro)
-        disposicao.addStretch(2)
+        disposicao.addStretch(1)
 
         self.botao_entrar.clicked.connect(self.autenticar)
         self.campo_utilizador.returnPressed.connect(self.autenticar)

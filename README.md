@@ -49,7 +49,7 @@ src/
   report.py             Relatório PDF da operação
   gui/main_window.py    Janela única: barra lateral, painéis e orquestração
   gui/theme.py          Tema visual (claro institucional)
-  gui/icons.py          Ícones SVG desenhados no próprio código
+  gui/icons.py          Ícones e ilustrações SVG desenhados no próprio código
   gui/widgets.py        Componentes partilhados (cartões, banner, detalhes)
   gui/pages/login.py    Autenticação
   gui/pages/devices.py  Discos físicos e volumes lógicos
@@ -226,7 +226,7 @@ py -3.11 -m unittest discover -s tests -t . -v      # suite completa
 py -3.11 -m unittest tests.test_carving -v          # um módulo isolado
 ```
 
-291 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
+295 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
 sintéticas criadas em ficheiros temporários — nenhum dispositivo físico é tocado. Os
 testes da GUI correm com Qt em modo *offscreen* e ficam em `skipped` se o PySide6 não
 estiver instalado; os de `report.py` ficam em `skipped` sem o ReportLab.
