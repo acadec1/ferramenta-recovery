@@ -44,7 +44,7 @@ src/
   recovery.py           Reconstrução de ficheiros a partir dos clusters/sectores
   carving.py            Carving por assinatura binária (JPEG, PDF, DOCX)
   integrity.py          Hash SHA-256 e verificação de integridade
-  historico.py          Histórico das operações realizadas (sqlite3)
+  historico.py          Histórico das operações realizadas (sqlite3 + JSON)
   operacao.py           Execução de uma operação (análise + recuperação)
   report.py             Relatório PDF da operação
   gui/main_window.py    Janela única: barra lateral, painéis e orquestração
@@ -123,11 +123,29 @@ interrompida.
 
 Cada operação fica registada em SQLite (`frda_historico.db`), nas tabelas
 `operacoes` e `operacao_ficheiros`: dispositivo, tipo e capacidade, sistema de
-ficheiros, método, totais, pasta de destino, observações e a lista de ficheiros
-processados com o respectivo estado e SHA-256. **Os ficheiros recuperados não
-são guardados na base de dados** — ficam apenas na pasta de destino escolhida. O
-painel *Histórico de operações* lista o que já foi feito, mostra os ficheiros de
-cada operação e permite voltar a gerar o respectivo relatório PDF.
+ficheiros, método, estado, totais, pasta de destino, observações e a lista de
+ficheiros processados com o respectivo estado e SHA-256. **Os ficheiros
+recuperados não são guardados na base de dados** — ficam apenas na pasta de
+destino escolhida. O painel *Histórico de operações* lista o que já foi feito,
+mostra os ficheiros de cada operação e permite voltar a gerar o respectivo
+relatório PDF.
+
+**A análise fica registada assim que termina**, mesmo que não se recupere nada:
+o estado da operação é `analisada`. Se a seguir se recuperarem ficheiros, é essa
+mesma operação que passa a `recuperada`, com destino e totais — não aparecem
+duas entradas para o mesmo trabalho. Uma análise parada fica `interrompida` e
+uma que falhou fica `falhada`, com o erro nas observações.
+
+Além do SQLite, a cada operação gravada ou actualizada o histórico completo é
+escrito em **JSON** (`frda_historico.json`), com uma entrada por operação e os
+respectivos ficheiros — pode ser aberto, arquivado ou tratado sem a ferramenta.
+A escrita passa por um ficheiro temporário, para o histórico anterior não ficar
+truncado se a aplicação for fechada a meio.
+
+Ambos os ficheiros ficam na **pasta da aplicação** (a que contém `src/`) e não
+na pasta de trabalho do processo: assim o histórico é o mesmo quer a ferramenta
+seja aberta pelo explorador, pela linha de comandos ou por um processo elevado
+pelo UAC. O painel mostra os dois caminhos no rodapé.
 
 A ferramenta é de **recuperação de dados**, não de análise forense: não mantém
 cadeia de custódia nem regista acção a acção. O que guarda é o registo da
@@ -283,9 +301,15 @@ Os dois hashes SHA-256 devem coincidir.
 py -3.11 -c "from src.integrity import verify_integrity; print(verify_integrity('<hash do relatorio>', r'D:\saida\ficheiro.jpg'))"
 ```
 
-O histórico fica em `frda_historico.db` (SQLite) na pasta de trabalho e pode ser
-consultado a qualquer momento:
+O histórico fica na pasta da aplicação, em `frda_historico.db` (SQLite) e em
+`frda_historico.json`, e pode ser consultado a qualquer momento:
 
 ```
-py -3.11 -c "from src.historico import Historico; [print(o) for o in Historico('frda_historico.db').get_operations()]"
+py -3.11 -c "from src.historico import Historico; [print(o) for o in Historico().get_operations()]"
+```
+
+O JSON pode ser lido directamente, sem passar pela ferramenta:
+
+```
+py -3.11 -c "import json; d=json.load(open('frda_historico.json', encoding='utf-8')); [print(o['id'], o['estado'], o['device_path'], o['recuperados'], '/', o['encontrados']) for o in d['operacoes']]"
 ```

@@ -15,7 +15,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from src.historico import NOMES_DOS_METODOS
+from src.historico import NOMES_DOS_ESTADOS, NOMES_DOS_METODOS
 
 
 def _celula(valor, estilo) -> Paragraph:
@@ -41,6 +41,7 @@ def _tamanho_legivel(tamanho) -> str:
 def _identificacao_da_operacao(operacao: dict) -> list[tuple]:
     """Linhas do cabecalho do relatorio, na ordem em que sao lidas."""
     metodo = operacao.get("metodo")
+    estado = operacao.get("estado")
     return [
         ("Identificacao da operacao", "#%s" % operacao.get("id", "-")),
         ("Inicio", operacao.get("inicio") or "-"),
@@ -50,6 +51,7 @@ def _identificacao_da_operacao(operacao: dict) -> list[tuple]:
         ("Capacidade", _tamanho_legivel(operacao.get("device_size"))),
         ("Sistema de ficheiros", operacao.get("filesystem") or "nao identificado"),
         ("Metodo utilizado", NOMES_DOS_METODOS.get(metodo, metodo or "-")),
+        ("Estado da operacao", NOMES_DOS_ESTADOS.get(estado, estado or "-")),
         ("Ficheiros encontrados", operacao.get("encontrados", 0)),
         ("Ficheiros seleccionados", operacao.get("seleccionados", 0)),
         ("Ficheiros recuperados", operacao.get("recuperados", 0)),

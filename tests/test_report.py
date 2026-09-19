@@ -27,6 +27,7 @@ class RelatorioDaOperacaoTest(unittest.TestCase):
             "device_size": 58_300_000_000,
             "filesystem": "exFAT",
             "metodo": "metadados",
+            "estado": "recuperada",
             "encontrados": 92,
             "seleccionados": 15,
             "recuperados": 13,
@@ -61,7 +62,8 @@ class RelatorioDaOperacaoTest(unittest.TestCase):
         rotulos = [r for r, _ in report._identificacao_da_operacao(self.operacao)]
         for esperado in ("Identificacao da operacao", "Inicio", "Dispositivo analisado",
                          "Tipo de dispositivo", "Capacidade", "Sistema de ficheiros",
-                         "Metodo utilizado", "Ficheiros encontrados",
+                         "Metodo utilizado", "Estado da operacao",
+                         "Ficheiros encontrados",
                          "Ficheiros seleccionados", "Ficheiros recuperados",
                          "Ficheiros nao recuperados", "Pasta de destino",
                          "Observacoes"):
@@ -72,6 +74,16 @@ class RelatorioDaOperacaoTest(unittest.TestCase):
         self.assertEqual(
             valores["Metodo utilizado"], "Recuperacao baseada em metadados"
         )
+
+    def test_estado_aparece_por_extenso(self):
+        valores = dict(report._identificacao_da_operacao(self.operacao))
+        self.assertEqual(valores["Estado da operacao"], "Recuperacao")
+
+    def test_operacao_antiga_sem_estado(self):
+        operacao = dict(self.operacao)
+        del operacao["estado"]
+        valores = dict(report._identificacao_da_operacao(operacao))
+        self.assertEqual(valores["Estado da operacao"], "-")
 
     def test_sistema_de_ficheiros_por_identificar(self):
         operacao = dict(self.operacao, filesystem=None)

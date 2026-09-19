@@ -28,6 +28,10 @@ from src.historico import (
     ESTADO_RECUPERADO,
     METODO_CARVING,
     METODO_METADADOS,
+    OPERACAO_ANALISADA,
+    OPERACAO_FALHADA,
+    OPERACAO_INTERROMPIDA,
+    OPERACAO_RECUPERADA,
     Historico,
 )
 from src.auth import ROLE_ADMIN, ROLE_OPERATOR, AuthStore
@@ -350,9 +354,24 @@ class AnaliseTest(JanelaBase):
         self.assertTrue(pagina.estado.isVisibleTo(pagina))
         self.assertEqual(pagina.estado.percentagem(), 100)
 
-    def test_a_analise_nao_deixa_registos_de_auditoria(self):
+    def test_a_analise_fica_registada_no_historico(self):
         self._janela_analisada()
-        self.assertEqual(self._operacoes(), [])
+        operacoes = self._operacoes()
+
+        self.assertEqual(len(operacoes), 1)
+        self.assertEqual(operacoes[0]["estado"], OPERACAO_ANALISADA)
+        self.assertEqual(operacoes[0]["encontrados"], 2)
+        self.assertEqual(operacoes[0]["recuperados"], 0)
+        self.assertIsNone(operacoes[0]["pasta_destino"])
+
+    def test_analise_falhada_fica_registada_com_o_erro(self):
+        janela = self._com_analise(self._janela(ADMIN), erro="Acesso negado a X")
+        janela.varrer(DISPOSITIVO)
+        operacoes = self._operacoes()
+
+        self.assertEqual(len(operacoes), 1)
+        self.assertEqual(operacoes[0]["estado"], OPERACAO_FALHADA)
+        self.assertIn("Acesso negado a X", operacoes[0]["observacoes"])
 
     def test_analise_falhada_mostra_o_erro(self):
         janela = self._com_analise(self._janela(ADMIN), erro="Acesso negado a X")
@@ -453,7 +472,7 @@ class RecuperacaoTest(JanelaBase):
         recuperacao.assert_not_called()
         self.assertEqual(janela.results_page.estado.estado, ERRO)
         self.assertIn("destroi a prova", janela.banner.text())
-        self.assertEqual(self.log.get_operations(), [])
+        self._so_a_analise_registada()
 
     def test_escolha_de_pasta_cancelada(self):
         janela = self._janela_analisada()
@@ -464,7 +483,7 @@ class RecuperacaoTest(JanelaBase):
         janela.results_page.painel.botao_accao.click()
 
         recuperacao.assert_not_called()
-        self.assertEqual(self.log.get_operations(), [])
+        self._so_a_analise_registada()
 
     def test_sem_seleccao(self):
         janela = self._janela_analisada()
@@ -483,7 +502,14 @@ class RecuperacaoTest(JanelaBase):
 
         self.assertEqual(janela.results_page.estado.estado, ERRO)
         self.assertIn("disco desligado", janela.banner.text())
-        self.assertEqual(self.log.get_operations(), [])
+        self._so_a_analise_registada()
+
+    def _so_a_analise_registada(self):
+        """A recuperacao nao chegou ao fim: o historico fica so com a analise."""
+        operacoes = self.log.get_operations()
+        self.assertEqual(len(operacoes), 1)
+        self.assertEqual(operacoes[0]["estado"], OPERACAO_ANALISADA)
+        self.assertIsNone(operacoes[0]["pasta_destino"])
 
 
 class ParagemTest(JanelaBase):

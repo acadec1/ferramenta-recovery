@@ -34,7 +34,15 @@ from PySide6.QtWidgets import (
 )
 
 from src import device_reader, operacao, report
-from src.historico import METODO_CARVING, METODO_METADADOS, Historico
+from src.historico import (
+    METODO_CARVING,
+    METODO_METADADOS,
+    OPERACAO_ANALISADA,
+    OPERACAO_FALHADA,
+    OPERACAO_INTERROMPIDA,
+    OPERACAO_RECUPERADA,
+    Historico,
+)
 from src.auth import (
     PERMISSION_MANAGE_USERS,
     PERMISSION_RECOVER,
@@ -104,6 +112,8 @@ class MainWindow(QMainWindow):
         self.entradas_encontradas: list[dict] = []
         self.inicio_da_operacao: str | None = None
         self.dados_do_dispositivo: dict = {}
+        # operacao ja registada no historico, completada se houver recuperacao
+        self.operacao_actual: int | None = None
         self.trabalho = None  # analise ou recuperacao a decorrer
 
         self.setWindowTitle(TITULO_JANELA)
@@ -372,6 +382,7 @@ class MainWindow(QMainWindow):
     def _carregar_historico(self) -> None:
         """Actualiza o painel com as operacoes guardadas."""
         self.history_page.mostrar_operacoes(self.historico.get_operations())
+        self.history_page.mostrar_caminhos(self.historico)
 
     def _mostrar_ficheiros_do_historico(self, identificador: int) -> None:
         self.history_page.mostrar_ficheiros(
@@ -428,17 +439,19 @@ class MainWindow(QMainWindow):
         self._bloquear_accoes(False)
         self.entradas_encontradas = list(entradas)
         self.results_page.terminar_analise(self.dispositivo_actual)
+        self._registar_analise(entradas, OPERACAO_ANALISADA, diagnostico)
         self.notificar(
             *self._resumo_do_varrimento(
                 self.dispositivo_actual, entradas, diagnostico
             )
         )
 
-    def _analise_interrompida(self, entradas: list, _diagnostico: dict) -> None:
+    def _analise_interrompida(self, entradas: list, diagnostico: dict) -> None:
         """A analise parou a pedido: o que ja foi encontrado continua utilizavel."""
         self._bloquear_accoes(False)
         self.entradas_encontradas = list(entradas)
         self.results_page.interromper()
+        self._registar_analise(entradas, OPERACAO_INTERROMPIDA, diagnostico)
         self.notificar(
             "Analise interrompida: %d ficheiros encontrados ate ao momento."
             % len(entradas),
@@ -448,9 +461,50 @@ class MainWindow(QMainWindow):
     def _analise_falhada(self, erro: str) -> None:
         self._bloquear_accoes(False)
         self.results_page.falhar(erro)
+        self._registar_analise([], OPERACAO_FALHADA, {}, observacoes=erro)
         self.notificar(erro, "erro")
         if "Acesso negado" in erro or "Administrador" in erro:
             self.botao_elevar.setVisible(True)
+
+    def _registar_analise(self, entradas: list, estado: str, diagnostico: dict,
+                          observacoes: str = "") -> None:
+        """Guarda a analise no historico mal ela termina.
+
+        A maior parte das analises nao chega a dar origem a uma recuperacao,
+        e mesmo assim sao trabalho feito que deve ficar registado. Se houver
+        recuperacao a seguir, e esta mesma operacao que e completada.
+        """
+        self.operacao_actual = self.historico.log_operation(
+            inicio=self.inicio_da_operacao,
+            fim=_agora(),
+            device_path=self.dispositivo_actual,
+            metodo=self.metodo_actual,
+            estado=estado,
+            encontrados=len(entradas),
+            seleccionados=0,
+            recuperados=0,
+            nao_recuperados=0,
+            app_user=self.user.get("username"),
+            observacoes=observacoes or self._notas_do_diagnostico(diagnostico),
+            **self.dados_do_dispositivo,
+        )
+        self.history_page.mostrar_caminhos(self.historico)
+
+    @staticmethod
+    def _notas_do_diagnostico(diagnostico: dict) -> str:
+        """O que a analise percorreu, para o historico dizer mais que um zero."""
+        if not diagnostico:
+            return ""
+        partes = []
+        if diagnostico.get("sistemas_de_ficheiros") is not None:
+            partes.append("%d sistemas de ficheiros"
+                          % diagnostico["sistemas_de_ficheiros"])
+        if diagnostico.get("tipos"):
+            partes.append(", ".join(diagnostico["tipos"]))
+        if diagnostico.get("registos_examinados"):
+            partes.append("%d registos examinados"
+                          % diagnostico["registos_examinados"])
+        return "; ".join(partes)
 
     @staticmethod
     def _resumo_do_varrimento(device_path: str, entradas: list,
@@ -532,18 +586,30 @@ class MainWindow(QMainWindow):
         self._bloquear_accoes(False)
         self.results_page.terminar_recuperacao()
         totais = operacao.resumo(len(self.entradas_encontradas), resultados)
-        identificador = self.historico.log_operation(
-            ficheiros=resultados,
-            inicio=self.inicio_da_operacao,
+        campos = dict(
             fim=_agora(),
-            device_path=self.dispositivo_actual,
-            metodo=self.metodo_actual,
+            estado=OPERACAO_INTERROMPIDA if interrompida else OPERACAO_RECUPERADA,
             pasta_destino=self.destino_actual,
-            app_user=self.user.get("username"),
             observacoes=self._observacoes(resultados, interrompida),
             **totais,
-            **self.dados_do_dispositivo,
         )
+        # A analise ja ficou registada: e essa operacao que se completa, para
+        # o mesmo trabalho nao aparecer duas vezes no historico.
+        if self.operacao_actual is not None:
+            self.historico.update_operation(
+                self.operacao_actual, ficheiros=resultados, **campos
+            )
+            identificador = self.operacao_actual
+        else:
+            identificador = self.historico.log_operation(
+                ficheiros=resultados,
+                inicio=self.inicio_da_operacao,
+                device_path=self.dispositivo_actual,
+                metodo=self.metodo_actual,
+                app_user=self.user.get("username"),
+                **campos,
+                **self.dados_do_dispositivo,
+            )
         operacao_registada = self.historico.get_operations(identificador)[0]
         self.summary_page.mostrar_operacao(operacao_registada, resultados)
         self.ir_para("resumo")

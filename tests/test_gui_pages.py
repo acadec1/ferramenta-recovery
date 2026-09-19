@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QApplication, QLineEdit
+    from PySide6.QtWidgets import QApplication, QHeaderView, QLineEdit
 
     from src.gui import theme
     from src.gui.pages.accounts import ERRO_CONFIRMACAO, AccountsPage
@@ -42,10 +42,14 @@ except ImportError:  # pragma: no cover - depende do ambiente
 
 from src import auth
 from src.historico import (
+    BASE_EM_MEMORIA,
     ESTADO_FALHADO,
     ESTADO_RECUPERADO,
     METODO_CARVING,
     METODO_METADADOS,
+    OPERACAO_ANALISADA,
+    OPERACAO_RECUPERADA,
+    Historico,
 )
 from src.auth import ROLE_ADMIN, ROLE_OPERATOR, AuthStore
 
@@ -809,11 +813,13 @@ class TrabalhosTest(PainelBase):
 class HistoryPageTest(PainelBase):
     OPERACOES = [
         {"id": 2, "inicio": "2026-09-19T11:00:00+00:00", "device_path": r"\\.\D:",
-         "metodo": METODO_CARVING, "encontrados": 92, "recuperados": 13,
+         "metodo": METODO_CARVING, "estado": OPERACAO_RECUPERADA,
+         "encontrados": 92, "recuperados": 13,
          "nao_recuperados": 2, "filesystem": "exFAT",
          "pasta_destino": r"D:\Recuperados", "app_user": "admin"},
         {"id": 1, "inicio": "2026-09-19T10:00:00+00:00", "device_path": r"\\.\C:",
-         "metodo": METODO_METADADOS, "encontrados": 5, "recuperados": 5,
+         "metodo": METODO_METADADOS, "estado": OPERACAO_ANALISADA,
+         "encontrados": 5, "recuperados": 0,
          "nao_recuperados": 0},
     ]
 
@@ -825,10 +831,32 @@ class HistoryPageTest(PainelBase):
 
         self.assertEqual(self.pagina.tabela.rowCount(), 2)
         self.assertEqual(self.pagina.tabela.item(0, 0).text(), "2")
-        self.assertEqual(self.pagina.tabela.item(0, 1).text(), "2026-09-19 11:00:00")
-        self.assertIn("File Carving", self.pagina.tabela.item(0, 3).text())
-        self.assertEqual(self.pagina.tabela.item(0, 5).text(), "13")
+        self.assertEqual(self.pagina.tabela.item(0, 1).text(), "2026-09-19\n11:00:00")
+        self.assertEqual(self.pagina.tabela.item(0, 1).toolTip(),
+                         "2026-09-19 11:00:00")
+        self.assertEqual(self.pagina.tabela.item(0, 3).text(), "Carving")
+        self.assertEqual(self.pagina.tabela.item(0, 4).text(), "Recuperacao")
+        self.assertEqual(self.pagina.tabela.item(0, 5).text(), "13 / 92")
+        self.assertEqual(self.pagina.tabela.item(1, 4).text(), "So analise")
+        self.assertEqual(self.pagina.tabela.item(1, 5).text(), "0 / 5")
         self.assertEqual(self.pagina.etiqueta_contagem.text(), "2 operacoes")
+
+    def test_a_coluna_do_dispositivo_estica_e_as_outras_sao_fixas(self):
+        """Sem isto, as colunas de numeros espremem o caminho do dispositivo."""
+        cabecalho = self.pagina.tabela.horizontalHeader()
+        self.assertEqual(cabecalho.sectionResizeMode(2), QHeaderView.Stretch)
+        for coluna in (0, 1, 3, 4, 5):
+            self.assertEqual(cabecalho.sectionResizeMode(coluna), QHeaderView.Fixed)
+
+    def test_mostra_onde_o_historico_esta_guardado(self):
+        historico = Historico(BASE_EM_MEMORIA, json_path=r"D:\FRDA\frda_historico.json")
+        self.addCleanup(historico.close)
+
+        self.pagina.mostrar_caminhos(historico)
+
+        texto = self.pagina.etiqueta_caminhos.text()
+        self.assertIn(r"D:\FRDA\frda_historico.json", texto)
+        self.assertIn(BASE_EM_MEMORIA, texto)
 
     def test_sem_operacoes(self):
         self.pagina.mostrar_operacoes([])

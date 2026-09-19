@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -15,16 +15,22 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.historico import NOMES_DOS_METODOS
+from src.historico import (
+    NOMES_CURTOS_DOS_METODOS,
+    NOMES_DOS_ESTADOS,
+    NOMES_DOS_METODOS,
+)
 from src.gui import theme
 from src.gui.widgets import CabecalhoDePainel, PainelDeDetalhes, formatar_tamanho
 
 TITULO = "Historico de operacoes"
 DESCRICAO = "Operacoes de recuperacao ja realizadas, da mais recente para a mais antiga."
-COLUNAS = (
-    "#", "Data/Hora", "Dispositivo", "Metodo", "Encontrados", "Recuperados",
-    "Nao recuperados",
-)
+COLUNAS = ("#", "Data/Hora", "Dispositivo", "Metodo", "Estado", "Ficheiros")
+# Larguras fixas: deixadas ao conteudo, as colunas de numeros ficavam maiores
+# que a do dispositivo e nao cabiam todas na largura util do painel. Os totais
+# por estado estao no painel de detalhes, a direita.
+LARGURAS = {0: 38, 1: 132, 3: 118, 4: 128, 5: 92}
+COLUNA_ELASTICA = 2  # o dispositivo fica com o espaco que sobrar
 COLUNAS_DOS_FICHEIROS = ("Nome", "Tipo", "Tamanho", "Estado")
 ACCAO = "Gerar relatorio PDF"
 SEM_OPERACOES = "Ainda nao ha operacoes registadas."
@@ -35,6 +41,13 @@ def _data_legivel(timestamp) -> str:
     if not timestamp:
         return ""
     return str(timestamp)[:19].replace("T", " ")
+
+
+def _data_em_duas_linhas(timestamp) -> str:
+    """A hora por baixo da data: numa so linha a coluna ficava larga demais
+    e sobrava pouco espaco para o caminho do dispositivo."""
+    legivel = _data_legivel(timestamp)
+    return legivel.replace(" ", "\n", 1) if legivel else ""
 
 
 class HistoryPage(QWidget):
@@ -65,11 +78,14 @@ class HistoryPage(QWidget):
         self.tabela.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tabela.setAlternatingRowColors(True)
         self.tabela.verticalHeader().setVisible(False)
+        # as linhas crescem para a data caber em duas linhas
+        self.tabela.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         cabecalho_tabela = self.tabela.horizontalHeader()
         cabecalho_tabela.setStretchLastSection(False)
-        cabecalho_tabela.setSectionResizeMode(2, QHeaderView.Stretch)
-        for coluna in (0, 1, 3, 4, 5, 6):
-            cabecalho_tabela.setSectionResizeMode(coluna, QHeaderView.ResizeToContents)
+        cabecalho_tabela.setSectionResizeMode(COLUNA_ELASTICA, QHeaderView.Stretch)
+        for coluna, largura in LARGURAS.items():
+            cabecalho_tabela.setSectionResizeMode(coluna, QHeaderView.Fixed)
+            self.tabela.setColumnWidth(coluna, largura)
 
         self.tabela_de_ficheiros = QTableWidget(0, len(COLUNAS_DOS_FICHEIROS))
         self.tabela_de_ficheiros.setHorizontalHeaderLabels(COLUNAS_DOS_FICHEIROS)
@@ -87,6 +103,13 @@ class HistoryPage(QWidget):
         self.etiqueta_ficheiros = QLabel("Ficheiros da operacao seleccionada")
         self.etiqueta_ficheiros.setObjectName(theme.TITULO_SECCAO)
 
+        # Onde o historico esta guardado: o JSON pode ser aberto e arquivado
+        # fora da ferramenta, por isso vale a pena ter o caminho a vista.
+        self.etiqueta_caminhos = QLabel("")
+        self.etiqueta_caminhos.setObjectName(theme.SUBTITULO)
+        self.etiqueta_caminhos.setWordWrap(True)
+        self.etiqueta_caminhos.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
         self.painel = PainelDeDetalhes(ACCAO)
 
         conteudo = QVBoxLayout()
@@ -96,6 +119,7 @@ class HistoryPage(QWidget):
         conteudo.addWidget(self.tabela, 3)
         conteudo.addWidget(self.etiqueta_ficheiros)
         conteudo.addWidget(self.tabela_de_ficheiros, 2)
+        conteudo.addWidget(self.etiqueta_caminhos)
 
         disposicao = QHBoxLayout(self)
         disposicao.setContentsMargins(0, 0, 0, 0)
@@ -112,23 +136,44 @@ class HistoryPage(QWidget):
         self.tabela.setRowCount(len(self.operacoes))
         for linha, operacao in enumerate(self.operacoes):
             metodo = operacao.get("metodo")
+            estado = operacao.get("estado")
+            recuperados = operacao.get("recuperados", 0)
+            encontrados = operacao.get("encontrados", 0)
             valores = (
                 operacao.get("id", ""),
-                _data_legivel(operacao.get("inicio")),
+                _data_em_duas_linhas(operacao.get("inicio")),
                 operacao.get("device_path") or "",
-                NOMES_DOS_METODOS.get(metodo, metodo),
-                operacao.get("encontrados", 0),
-                operacao.get("recuperados", 0),
-                operacao.get("nao_recuperados", 0),
+                NOMES_CURTOS_DOS_METODOS.get(metodo, metodo),
+                NOMES_DOS_ESTADOS.get(estado, estado or "-"),
+                "%s / %s" % (recuperados, encontrados),
             )
             for coluna, valor in enumerate(valores):
-                self.tabela.setItem(linha, coluna, QTableWidgetItem(str(valor)))
+                celula = QTableWidgetItem(str(valor))
+                if coluna == 2:  # o caminho pode nao caber na coluna
+                    celula.setToolTip(str(valor))
+                self.tabela.setItem(linha, coluna, celula)
+            self.tabela.item(linha, 1).setToolTip(
+                _data_legivel(operacao.get("inicio"))
+            )
+            self.tabela.item(linha, 5).setToolTip(
+                "%s recuperados de %s encontrados" % (recuperados, encontrados)
+            )
         self.etiqueta_contagem.setText(
             SEM_OPERACOES if not self.operacoes
             else "%d operacoes" % len(self.operacoes)
         )
         self.tabela_de_ficheiros.setRowCount(0)
         self.painel.limpar()
+
+    def mostrar_caminhos(self, historico) -> None:
+        """Mostra onde estao guardados o JSON e a base de dados."""
+        linhas = ["Base de dados: %s" % historico.db_path]
+        if historico.json_path:
+            linhas.insert(0, "Historico em JSON: %s" % historico.json_path)
+        if historico.erro_do_json:
+            linhas.append("Nao foi possivel escrever o JSON: %s"
+                          % historico.erro_do_json)
+        self.etiqueta_caminhos.setText("   |   ".join(linhas))
 
     def mostrar_ficheiros(self, ficheiros: list[dict]) -> None:
         """Lista os ficheiros processados na operacao seleccionada."""
@@ -162,6 +207,8 @@ class HistoryPage(QWidget):
             "Operacao #%s" % operacao.get("id"),
             NOMES_DOS_METODOS.get(metodo, metodo or "-"),
             [
+                ("Estado:", NOMES_DOS_ESTADOS.get(operacao.get("estado"),
+                                                  operacao.get("estado") or "-")),
                 ("Dispositivo:", operacao.get("device_path") or "-"),
                 ("Sistema de ficheiros:",
                  operacao.get("filesystem") or "nao identificado"),
