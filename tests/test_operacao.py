@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 from src import operacao
-from src.audit_log import (
+from src.historico import (
     ESTADO_FALHADO,
     ESTADO_RECUPERADO,
     METODO_CARVING,
@@ -44,7 +44,7 @@ class TipoDoFicheiroTest(unittest.TestCase):
 
 class AnaliseTest(unittest.TestCase):
     def test_metodo_de_metadados(self):
-        def scan(device_path, diagnostico=None, progresso=None):
+        def scan(device_path, diagnostico=None, progresso=None, ao_encontrar=None):
             if diagnostico is not None:
                 diagnostico.update({"particoes": 1, "sistemas_de_ficheiros": 1})
             return [dict(ENTRADA_DE_METADADOS)]
@@ -63,7 +63,7 @@ class AnaliseTest(unittest.TestCase):
         self.assertEqual(diagnostico["particoes"], 1)
 
     def test_metodo_de_carving_percorre_todos_os_tipos(self):
-        def procurar(device_path, tipo, progresso=None):
+        def procurar(device_path, tipo, progresso=None, ao_encontrar=None):
             return [dict(CANDIDATO_DE_CARVING, type=tipo, name="%s_1.bin" % tipo)]
 
         with mock.patch.object(operacao.carving, "find_by_signature",
@@ -80,7 +80,7 @@ class AnaliseTest(unittest.TestCase):
     def test_progresso_do_carving_soma_os_tipos(self):
         recebidos = []
 
-        def procurar(device_path, tipo, progresso=None):
+        def procurar(device_path, tipo, progresso=None, ao_encontrar=None):
             progresso(50, 100)  # metade deste tipo
             return []
 
@@ -93,6 +93,38 @@ class AnaliseTest(unittest.TestCase):
         self.assertEqual(len(recebidos), tipos)
         self.assertEqual(recebidos[0], (50, 100 * tipos))
         self.assertEqual(recebidos[-1], (100 * (tipos - 1) + 50, 100 * tipos))
+
+    def test_entradas_entregues_durante_a_analise(self):
+        """A lista deve preencher-se enquanto a analise decorre."""
+        vistas = []
+
+        def scan(device_path, diagnostico=None, progresso=None, ao_encontrar=None):
+            for nome in ("a.txt", "b.jpg"):
+                ao_encontrar(dict(ENTRADA_DE_METADADOS, name=nome))
+            return [dict(ENTRADA_DE_METADADOS, name=n) for n in ("a.txt", "b.jpg")]
+
+        with mock.patch.object(operacao.filesystem_parser, "scan_deleted_entries",
+                               side_effect=scan):
+            operacao.analisar(DISPOSITIVO, METODO_METADADOS, None, vistas.append)
+
+        self.assertEqual([e["nome"] for e in vistas], ["a.txt", "b.jpg"])
+        self.assertEqual(vistas[1]["tipo"], "JPG")  # ja normalizadas
+        self.assertEqual(vistas[0]["metodo"], METODO_METADADOS)
+
+    def test_candidatos_de_carving_entregues_durante_a_analise(self):
+        vistas = []
+
+        def procurar(device_path, tipo, progresso=None, ao_encontrar=None):
+            candidato = dict(CANDIDATO_DE_CARVING, name="%s_1.bin" % tipo)
+            ao_encontrar(candidato)
+            return [candidato]
+
+        with mock.patch.object(operacao.carving, "find_by_signature",
+                               side_effect=procurar):
+            operacao.analisar(DISPOSITIVO, METODO_CARVING, None, vistas.append)
+
+        self.assertEqual(len(vistas), len(operacao.carving.supported_types()))
+        self.assertTrue(all(e["metodo"] == METODO_CARVING for e in vistas))
 
     def test_metodo_desconhecido(self):
         with self.assertRaises(ValueError):

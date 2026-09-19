@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.audit_log import ESTADO_RECUPERADO, NOMES_DOS_METODOS
+from src.historico import ESTADO_RECUPERADO, NOMES_DOS_METODOS
 from src.gui import theme
 from src.gui.widgets import (
     CabecalhoDePainel,

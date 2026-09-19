@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from src import device_reader
-from src.audit_log import METODO_CARVING, METODO_METADADOS, NOMES_DOS_METODOS
+from src.historico import METODO_CARVING, METODO_METADADOS, NOMES_DOS_METODOS
 from src.gui import icons, theme
 from src.gui.widgets import (
     CabecalhoDePainel,

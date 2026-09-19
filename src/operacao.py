@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 
 from src import carving, device_reader, filesystem_parser, integrity, recovery
-from src.audit_log import (
+from src.historico import (
     ESTADO_FALHADO,
     ESTADO_RECUPERADO,
     METODO_CARVING,
@@ -51,30 +51,48 @@ def _normalizar(entrada: dict, metodo: str) -> dict:
     }
 
 
-def analisar(device_path: str, metodo: str, progresso=None) -> tuple[list[dict], dict]:
+def analisar(device_path: str, metodo: str, progresso=None,
+             ao_encontrar=None) -> tuple[list[dict], dict]:
     """Analisa o dispositivo pelo metodo indicado.
 
     Devolve as entradas encontradas e um diagnostico com o que foi examinado.
+    Se ``ao_encontrar`` for indicado, cada entrada e entregue assim que e
+    localizada, ja normalizada, para a lista se ir preenchendo durante a
+    analise em vez de aparecer toda no fim.
     """
     if metodo == METODO_METADADOS:
-        return _analisar_por_metadados(device_path, progresso)
+        return _analisar_por_metadados(device_path, progresso, ao_encontrar)
     if metodo == METODO_CARVING:
-        return _analisar_por_assinaturas(device_path, progresso)
+        return _analisar_por_assinaturas(device_path, progresso, ao_encontrar)
     raise ValueError("metodo desconhecido: %r" % metodo)
 
 
-def _analisar_por_metadados(device_path: str, progresso) -> tuple[list[dict], dict]:
+def _entregar(metodo, ao_encontrar):
+    """Normaliza a entrada em bruto e entrega-a a quem esta a acompanhar."""
+    if ao_encontrar is None:
+        return None
+
+    def entregar(entrada):
+        ao_encontrar(_normalizar(entrada, metodo))
+
+    return entregar
+
+
+def _analisar_por_metadados(device_path: str, progresso,
+                            ao_encontrar=None) -> tuple[list[dict], dict]:
     diagnostico: dict = {}
     entradas = filesystem_parser.scan_deleted_entries(
-        device_path, diagnostico, progresso
+        device_path, diagnostico, progresso, _entregar(METODO_METADADOS, ao_encontrar)
     )
     diagnostico["metodo"] = METODO_METADADOS
     return [_normalizar(e, METODO_METADADOS) for e in entradas], diagnostico
 
 
-def _analisar_por_assinaturas(device_path: str, progresso) -> tuple[list[dict], dict]:
+def _analisar_por_assinaturas(device_path: str, progresso,
+                              ao_encontrar=None) -> tuple[list[dict], dict]:
     tipos = carving.supported_types()
     entradas: list[dict] = []
+    entregar = _entregar(METODO_CARVING, ao_encontrar)
     for posicao, tipo in enumerate(tipos):
         def avanco(lidos, total, posicao=posicao):
             """Junta o progresso dos varios tipos numa so barra."""
@@ -85,7 +103,9 @@ def _analisar_por_assinaturas(device_path: str, progresso) -> tuple[list[dict], 
                 return
             progresso(posicao * total + lidos, len(tipos) * total)
 
-        for candidato in carving.find_by_signature(device_path, tipo, avanco):
+        for candidato in carving.find_by_signature(
+            device_path, tipo, avanco, entregar
+        ):
             entradas.append(_normalizar(candidato, METODO_CARVING))
 
     diagnostico = {

@@ -18,17 +18,17 @@ try:
     from PySide6.QtWidgets import QApplication
 
     from src.gui import main_window
-    from src.gui.widgets import AGUARDANDO, CONCLUIDO, EM_ANALISE, ERRO
+    from src.gui.widgets import CONCLUIDO, EM_ANALISE, ERRO
 except ImportError:  # pragma: no cover - depende do ambiente
     main_window = None
 
 from src import auth
-from src.audit_log import (
+from src.historico import (
     ESTADO_FALHADO,
     ESTADO_RECUPERADO,
     METODO_CARVING,
     METODO_METADADOS,
-    AuditLog,
+    Historico,
 )
 from src.auth import ROLE_ADMIN, ROLE_OPERATOR, AuthStore
 
@@ -82,6 +82,7 @@ def fabrica_de_analise(entradas=(), diagnostico=None, erro=None, progresso=(50, 
 
     class AnaliseFalsa(QObject):
         progresso_sinal = Signal(int, int)
+        encontrados = Signal(list)
         concluido = Signal(list, dict)
         falhou = Signal(str)
 
@@ -99,8 +100,10 @@ def fabrica_de_analise(entradas=(), diagnostico=None, erro=None, progresso=(50, 
                 self.progresso_sinal.emit(*progresso)
             if erro is not None:
                 self.falhou.emit(erro)
-            else:
-                self.concluido.emit(list(entradas), dict(diagnostico or DIAGNOSTICO))
+                return
+            if entradas:  # como na analise real: primeiro os lotes, depois o fim
+                self.encontrados.emit(list(entradas))
+            self.concluido.emit(list(entradas), dict(diagnostico or DIAGNOSTICO))
 
     AnaliseFalsa.progresso = AnaliseFalsa.progresso_sinal
     return AnaliseFalsa
@@ -144,7 +147,7 @@ class JanelaBase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        self.log = AuditLog(":memory:")
+        self.log = Historico(":memory:")
         patcher = mock.patch.object(auth, "ITERATIONS", 1000)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -168,7 +171,7 @@ class JanelaBase(unittest.TestCase):
 
     def _janela(self, user=ADMIN):
         janela = main_window.MainWindow(
-            user=user, audit_log=self.log, auth_store=self.auth_store
+            user=user, historico=self.log, auth_store=self.auth_store
         )
         self.addCleanup(janela.close)
         return janela
@@ -195,8 +198,8 @@ class JanelaBase(unittest.TestCase):
         cartoes = [c for c in janela.devices_page.cartoes if c.dados["tipo"] == tipo]
         return cartoes[indice]
 
-    def _accoes(self):
-        return [evento["action"] for evento in self.log.get_events()]
+    def _operacoes(self):
+        return self.log.get_operations()
 
 
 class SessaoTest(JanelaBase):
@@ -213,7 +216,7 @@ class SessaoTest(JanelaBase):
 
         self.assertIsNot(janela.janela.currentWidget(), janela.login_page)
         self.assertEqual(janela.painel_actual(), "dispositivos")
-        self.assertEqual(janela.estado.estado, AGUARDANDO)
+        self.assertFalse(janela.results_page.estado.isVisibleTo(janela.results_page))
 
     def test_terminar_sessao_limpa_a_operacao(self):
         janela = self._janela_analisada()
@@ -223,7 +226,6 @@ class SessaoTest(JanelaBase):
         self.assertIs(janela.janela.currentWidget(), janela.login_page)
         self.assertEqual(janela.results_page.tabela.rowCount(), 0)
         self.assertEqual(janela.summary_page.tabela.rowCount(), 0)
-        self.assertEqual(janela.estado.estado, AGUARDANDO)
 
 
 class NavegacaoTest(JanelaBase):
@@ -238,7 +240,7 @@ class NavegacaoTest(JanelaBase):
                 "2. Ficheiros encontrados",
                 "3. Resultados",
                 "Ferramentas",
-                "Cadeia de custodia",
+                "Historico de operacoes",
                 "Contas de acesso",
             ],
         )
@@ -253,10 +255,11 @@ class NavegacaoTest(JanelaBase):
         janela.menu.setCurrentItem(janela.itens_do_menu["resumo"])
         self.assertEqual(janela.painel_actual(), "resumo")
 
-    def test_painel_de_auditoria_carrega_os_eventos(self):
-        janela = self._janela_analisada()
-        janela.ir_para("auditoria")
-        self.assertEqual(janela.audit_page.tabela.rowCount(), 1)
+    def test_nao_ha_cadeia_de_custodia(self):
+        janela = self._janela(ADMIN)
+        self.assertNotIn("auditoria", janela.paineis)
+        self.assertFalse(hasattr(janela, "audit_page"))
+        self.assertFalse(hasattr(janela, "registar_evento"))
 
 
 class PermissoesTest(JanelaBase):
@@ -264,7 +267,7 @@ class PermissoesTest(JanelaBase):
         janela = self._janela(OPERADOR)
         self.assertFalse(janela.itens_do_menu["dispositivos"].isHidden())
         self.assertFalse(janela.itens_do_menu["resumo"].isHidden())
-        self.assertTrue(janela.itens_do_menu["auditoria"].isHidden())
+        self.assertTrue(janela.itens_do_menu["historico"].isHidden())
         self.assertTrue(janela.itens_do_menu["contas"].isHidden())
 
     def test_sem_sessao_nao_varre(self):
@@ -273,14 +276,10 @@ class PermissoesTest(JanelaBase):
         janela.varrer(DISPOSITIVO)
         analise.assert_not_called()
 
-    def test_operador_nao_gera_relatorio_da_cadeia(self):
-        janela = self._janela_analisada(user=OPERADOR)
-        gerar = self._patch("report.generate_report")
-
-        janela.gerar_relatorio()
-
-        gerar.assert_not_called()
-        self.assertEqual(janela.banner.property("tipo"), "erro")
+    def test_operador_nao_ve_o_historico(self):
+        janela = self._janela(OPERADOR)
+        janela.ir_para("historico")
+        self.assertNotEqual(janela.painel_actual(), "historico")
 
 
 class AnaliseTest(JanelaBase):
@@ -296,33 +295,54 @@ class AnaliseTest(JanelaBase):
         self.assertEqual(trabalho.device_path, r"\\.\PhysicalDrive1")
         self.assertEqual(trabalho.metodo, METODO_CARVING)
 
+    def test_abre_logo_a_pagina_dos_ficheiros(self):
+        """Ao iniciar a analise, a pagina dos ficheiros abre de imediato."""
+        janela = self._com_analise(self._janela(ADMIN))
+        paineis = []
+        janela.results_page.estado.definir_estado = (
+            lambda *args, **kwargs: paineis.append(janela.painel_actual())
+        )
+
+        janela.varrer(DISPOSITIVO)
+
+        # o primeiro estado (em analise) ja foi definido com a pagina aberta
+        self.assertEqual(paineis[0], "resultados")
+
     def test_resultados_aparecem_e_o_estado_fica_concluido(self):
         janela = self._janela_analisada()
 
         self.assertEqual(janela.painel_actual(), "resultados")
         self.assertEqual(janela.results_page.tabela.rowCount(), 2)
-        self.assertEqual(janela.estado.estado, CONCLUIDO)
-        self.assertIn("2 ficheiros encontrados", janela.estado.detalhe.text())
+        self.assertEqual(janela.results_page.estado.estado, CONCLUIDO)
+        self.assertIn("2 ficheiros encontrados",
+                      janela.results_page.estado.detalhe.text())
         self.assertEqual(janela.banner.property("tipo"), "sucesso")
 
-    def test_progresso_chega_a_barra(self):
+    def test_lista_preenche_se_durante_a_analise(self):
         janela = self._janela_analisada()
-        self.assertEqual(janela.estado.percentagem(), 100)  # concluido
+        # a fabrica emite o lote antes de concluir: as linhas ja la estao
+        self.assertEqual(
+            [e["nome"] for e in janela.results_page.entradas],
+            ["relatorio.docx", "foto.jpg"],
+        )
 
-    def test_varrimento_regista_o_evento(self):
+    def test_barra_de_progresso_fica_na_pagina_dos_ficheiros(self):
+        janela = self._janela_analisada()
+        pagina = janela.results_page
+        self.assertTrue(pagina.estado.isVisibleTo(pagina))
+        self.assertEqual(pagina.estado.percentagem(), 100)
+
+    def test_a_analise_nao_deixa_registos_de_auditoria(self):
         self._janela_analisada()
-        eventos = self.log.get_events()
-        self.assertEqual([e["action"] for e in eventos], ["scan"])
-        self.assertEqual(eventos[0]["app_user"], "admin")
+        self.assertEqual(self._operacoes(), [])
 
     def test_analise_falhada_mostra_o_erro(self):
         janela = self._com_analise(self._janela(ADMIN), erro="Acesso negado a X")
         janela.varrer(DISPOSITIVO)
 
-        self.assertEqual(janela.estado.estado, ERRO)
+        self.assertEqual(janela.results_page.estado.estado, ERRO)
         self.assertEqual(janela.banner.property("tipo"), "erro")
         self.assertTrue(janela.botao_elevar.isVisibleTo(janela))
-        self.assertEqual(self.log.get_events(), [])
 
     def test_sem_resultados_explica_o_que_foi_analisado(self):
         janela = self._com_analise(self._janela(ADMIN), entradas=[])
@@ -391,22 +411,8 @@ class RecuperacaoTest(JanelaBase):
         self.assertEqual(janela.summary_page.cartoes["recuperados"].valor(), "1")
         self.assertEqual(janela.summary_page.cartoes["nao_recuperados"].valor(), "1")
         self.assertEqual(janela.summary_page.tabela.rowCount(), 2)
-        self.assertEqual(janela.estado.estado, CONCLUIDO)
 
-    def test_eventos_de_auditoria_por_ficheiro(self):
-        janela = self._janela_analisada()
-        self._com_recuperacao([resultado(), resultado("foto.jpg", ESTADO_FALHADO)])
-        self._patch("MainWindow.escolher_pasta", return_value=self.tmp)
-        janela.results_page.tabela.selectAll()
-
-        janela.results_page.painel.botao_accao.click()
-
-        self.assertEqual(
-            self._accoes(),
-            ["scan", "recover", "verify_ok", "recover", "verify_falhou"],
-        )
-
-    def test_carving_regista_a_accao_propria(self):
+    def test_operacao_de_carving_fica_registada_como_tal(self):
         janela = self._janela_analisada(metodo=METODO_CARVING)
         self._com_recuperacao([resultado()])
         self._patch("MainWindow.escolher_pasta", return_value=self.tmp)
@@ -414,7 +420,6 @@ class RecuperacaoTest(JanelaBase):
 
         janela.results_page.painel.botao_accao.click()
 
-        self.assertEqual(self._accoes(), ["scan", "carving", "verify_ok"])
         self.assertEqual(self.log.get_operations()[0]["metodo"], METODO_CARVING)
 
     def test_destino_no_dispositivo_analisado_e_recusado(self):
@@ -428,7 +433,7 @@ class RecuperacaoTest(JanelaBase):
         janela.results_page.painel.botao_accao.click()
 
         recuperacao.assert_not_called()
-        self.assertEqual(janela.estado.estado, ERRO)
+        self.assertEqual(janela.results_page.estado.estado, ERRO)
         self.assertIn("destroi a prova", janela.banner.text())
         self.assertEqual(self.log.get_operations(), [])
 
@@ -458,7 +463,7 @@ class RecuperacaoTest(JanelaBase):
 
         janela.results_page.painel.botao_accao.click()
 
-        self.assertEqual(janela.estado.estado, ERRO)
+        self.assertEqual(janela.results_page.estado.estado, ERRO)
         self.assertIn("disco desligado", janela.banner.text())
         self.assertEqual(self.log.get_operations(), [])
 
@@ -487,7 +492,6 @@ class RelatorioDaOperacaoTest(JanelaBase):
         self.assertEqual(operacao_passada["metodo"], METODO_METADADOS)
         self.assertEqual([f["nome"] for f in ficheiros], ["relatorio.docx"])
         abrir.assert_called_once_with(destino)
-        self.assertIn("report", self._accoes())
 
     def test_sem_operacao_nao_ha_relatorio(self):
         janela = self._janela(ADMIN)
@@ -532,19 +536,31 @@ class HistoricoTest(JanelaBase):
 
     def test_painel_mostra_o_historico(self):
         janela = self._com_operacao()
-        janela.ir_para("auditoria")
-        self.assertEqual(janela.audit_page.tabela_de_operacoes.rowCount(), 1)
+        janela.ir_para("historico")
+        self.assertEqual(janela.history_page.tabela.rowCount(), 1)
+
+    def test_seleccionar_mostra_os_ficheiros_da_operacao(self):
+        janela = self._com_operacao()
+        janela.ir_para("historico")
+
+        janela.history_page.tabela.selectRow(0)
+
+        self.assertEqual(janela.history_page.tabela_de_ficheiros.rowCount(), 1)
+        self.assertEqual(
+            janela.history_page.tabela_de_ficheiros.item(0, 0).text(),
+            "relatorio.docx",
+        )
 
     def test_relatorio_de_operacao_antiga(self):
         janela = self._com_operacao()
-        janela.ir_para("auditoria")
+        janela.ir_para("historico")
         gerar = self._patch("report.generate_operation_report")
         self._patch("MainWindow.escolher_ficheiro_de_destino",
                     return_value=os.path.join(self.tmp, "antiga.pdf"))
         self._patch("os.startfile", create=True)
 
-        janela.audit_page.tabela_de_operacoes.selectRow(0)
-        janela.audit_page.botao_relatorio_da_operacao.click()
+        janela.history_page.tabela.selectRow(0)
+        janela.history_page.painel.botao_accao.click()
 
         gerar.assert_called_once()
         operacao_passada, ficheiros, _caminho = gerar.call_args[0]

@@ -96,8 +96,8 @@ def _nome_do_candidato(signature: dict, indice: int, inicio: int) -> str:
     )
 
 
-def find_by_signature(device_path: str, file_type: str,
-                      progresso=None) -> list[dict]:
+def find_by_signature(device_path: str, file_type: str, progresso=None,
+                      ao_encontrar=None) -> list[dict]:
     """Localiza (sem extrair) os ficheiros do tipo indicado em ``device_path``.
 
     Percorre o dispositivo do principio ao fim a procura do par
@@ -106,7 +106,8 @@ def find_by_signature(device_path: str, file_type: str,
     ``extension`` — o conteudo so e lido do disco quando se extrai, o que
     permite escolher a pasta de destino depois da analise.
 
-    ``progresso`` e chamado com ``(bytes_lidos, total_ou_None)`` a cada bloco.
+    ``progresso`` e chamado com ``(bytes_lidos, total_ou_None)`` a cada bloco e
+    ``ao_encontrar`` com cada candidato assim que e localizado.
     """
     signature = _signature(file_type)
     header = signature["header"]
@@ -164,17 +165,18 @@ def find_by_signature(device_path: str, file_type: str,
                 end = found + len(footer) + trailer
                 buffer.extend(window[position:end])
                 if _candidato_valido(bytes(buffer), signature):
-                    candidatos.append(
-                        {
-                            "name": _nome_do_candidato(
-                                signature, len(candidatos) + 1, file_start
-                            ),
-                            "offset": file_start,
-                            "size": len(buffer),
-                            "type": signature["type"],
-                            "extension": signature["extension"],
-                        }
-                    )
+                    candidato = {
+                        "name": _nome_do_candidato(
+                            signature, len(candidatos) + 1, file_start
+                        ),
+                        "offset": file_start,
+                        "size": len(buffer),
+                        "type": signature["type"],
+                        "extension": signature["extension"],
+                    }
+                    candidatos.append(candidato)
+                    if ao_encontrar is not None:
+                        ao_encontrar(candidato)
                 in_file = False
                 buffer = bytearray()
                 position = end

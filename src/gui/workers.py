@@ -12,11 +12,17 @@ from PySide6.QtCore import QThread, Signal
 
 from src import operacao
 
+# Entradas acumuladas antes de cada aviso a interface. Enviar uma a uma tornaria
+# a analise mais lenta do que o varrimento em si quando ha milhares de
+# ficheiros; um lote pequeno mantem a sensacao de tempo real.
+TAMANHO_DO_LOTE = 25
+
 
 class TrabalhoDeAnalise(QThread):
     """Analisa o dispositivo pelo metodo escolhido."""
 
     progresso = Signal(int, int)  # feitos, total (0 quando o total e desconhecido)
+    encontrados = Signal(list)  # lote de entradas, durante a analise
     concluido = Signal(list, dict)  # entradas encontradas, diagnostico
     falhou = Signal(str)
 
@@ -24,18 +30,31 @@ class TrabalhoDeAnalise(QThread):
         super().__init__(parent)
         self.device_path = device_path
         self.metodo = metodo
+        self._lote: list[dict] = []
 
     def _avancar(self, feitos, total) -> None:
         self.progresso.emit(int(feitos or 0), int(total or 0))
 
+    def _encontrada(self, entrada: dict) -> None:
+        self._lote.append(entrada)
+        if len(self._lote) >= TAMANHO_DO_LOTE:
+            self._despachar_lote()
+
+    def _despachar_lote(self) -> None:
+        if self._lote:
+            self.encontrados.emit(self._lote)
+            self._lote = []
+
     def run(self) -> None:  # noqa: D102 (documentado na classe)
         try:
             entradas, diagnostico = operacao.analisar(
-                self.device_path, self.metodo, self._avancar
+                self.device_path, self.metodo, self._avancar, self._encontrada
             )
         except Exception as erro:
+            self._despachar_lote()
             self.falhou.emit(str(erro))
             return
+        self._despachar_lote()
         self.concluido.emit(entradas, diagnostico)
 
 

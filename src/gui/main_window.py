@@ -1,10 +1,10 @@
 """Janela principal da ferramenta (PySide6).
 
-Toda a aplicacao vive numa unica janela: a autenticacao, a lista de
-dispositivos, os ficheiros apagados, o carving, a cadeia de custodia e as contas
-sao paineis empilhados que se substituem no mesmo espaco, sem abrir janelas
-novas. A janela limita-se a orquestrar os modulos de src/ — nao contem logica de
-negocio propria.
+Toda a aplicacao vive numa unica janela: a autenticacao, a escolha do
+dispositivo e do metodo, os ficheiros encontrados, os resultados, o historico e
+as contas sao paineis empilhados que se substituem no mesmo espaco, sem abrir
+janelas novas. A janela limita-se a orquestrar os modulos de src/ — nao contem
+logica de negocio propria.
 
 O acesso a cada painel depende do perfil da conta autenticada (ver src/auth.py):
 o administrador faz tudo, o operador so escaneia e recupera.
@@ -34,19 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from src import device_reader, operacao, report
-from src.audit_log import (
-    ACTION_CARVING,
-    ACTION_RECOVER,
-    ACTION_REPORT,
-    ACTION_SCAN,
-    ACTION_VERIFY_FAILED,
-    ACTION_VERIFY_OK,
-    ESTADO_RECUPERADO,
-    METODO_CARVING,
-    METODO_METADADOS,
-    NOMES_DOS_METODOS,
-    AuditLog,
-)
+from src.historico import METODO_CARVING, METODO_METADADOS, Historico
 from src.auth import (
     PERMISSION_MANAGE_USERS,
     PERMISSION_RECOVER,
@@ -57,20 +45,12 @@ from src.auth import (
 )
 from src.gui import icons, theme
 from src.gui.pages.accounts import AccountsPage
-from src.gui.pages.audit import AuditPage
 from src.gui.pages.devices import DevicesPage
+from src.gui.pages.history import HistoryPage
 from src.gui.pages.login import LoginPage
 from src.gui.pages.results import ResultsPage
 from src.gui.pages.summary import SummaryPage
-from src.gui.widgets import (
-    AGUARDANDO,
-    CONCLUIDO,
-    EM_ANALISE,
-    EM_RECUPERACAO,
-    ERRO,
-    Banner,
-    EstadoDaOperacao,
-)
+from src.gui.widgets import Banner
 from src.gui.workers import TrabalhoDeAnalise, TrabalhoDeRecuperacao
 
 TITULO_JANELA = "FRDA — Ferramenta de Recuperacao de Dados Apagados"
@@ -92,7 +72,8 @@ MENU = (
      PERMISSION_RECOVER, "ficheiro"),
     ("resumo", "3. Resultados", "Recuperacao de dados", PERMISSION_RECOVER,
      "carving"),
-    ("auditoria", "Cadeia de custodia", "Ferramentas", PERMISSION_REPORT, "auditoria"),
+    ("historico", "Historico de operacoes", "Ferramentas", PERMISSION_REPORT,
+     "auditoria"),
     ("contas", "Contas de acesso", "Ferramentas", PERMISSION_MANAGE_USERS, "contas"),
 )
 
@@ -112,10 +93,10 @@ def _agora() -> str:
 class MainWindow(QMainWindow):
     """Janela unica com barra lateral e paineis empilhados."""
 
-    def __init__(self, user: dict | None = None, audit_log: AuditLog | None = None,
+    def __init__(self, user: dict | None = None, historico: Historico | None = None,
                  auth_store: AuthStore | None = None):
         super().__init__()
-        self.audit_log = audit_log if audit_log is not None else AuditLog()
+        self.historico = historico if historico is not None else Historico()
         self.auth_store = auth_store if auth_store is not None else AuthStore()
         self.user: dict = {}
         self.dispositivo_actual: str | None = None
@@ -234,14 +215,14 @@ class MainWindow(QMainWindow):
         self.devices_page = DevicesPage()
         self.results_page = ResultsPage()
         self.summary_page = SummaryPage()
-        self.audit_page = AuditPage()
+        self.history_page = HistoryPage()
         self.accounts_page = AccountsPage(self.auth_store)
 
         self.paineis = {
             "dispositivos": self.devices_page,
             "resultados": self.results_page,
             "resumo": self.summary_page,
-            "auditoria": self.audit_page,
+            "historico": self.history_page,
             "contas": self.accounts_page,
         }
 
@@ -250,19 +231,16 @@ class MainWindow(QMainWindow):
             self.conteudo.addWidget(self.paineis[chave])
 
         self.banner = Banner()
-        self.estado = EstadoDaOperacao()
 
         area = QWidget()
         disposicao = QVBoxLayout(area)
         disposicao.setContentsMargins(0, 0, 0, 0)
         disposicao.setSpacing(0)
-        topo = QWidget()
-        topo_layout = QVBoxLayout(topo)
-        topo_layout.setContentsMargins(20, 12, 20, 0)
-        topo_layout.setSpacing(8)
-        topo_layout.addWidget(self.banner)
-        topo_layout.addWidget(self.estado)
-        disposicao.addWidget(topo)
+        margem_do_banner = QWidget()
+        banner_layout = QVBoxLayout(margem_do_banner)
+        banner_layout.setContentsMargins(20, 12, 20, 0)
+        banner_layout.addWidget(self.banner)
+        disposicao.addWidget(margem_do_banner)
         disposicao.addWidget(self.conteudo, 1)
         return area
 
@@ -275,10 +253,11 @@ class MainWindow(QMainWindow):
         self.botao_elevar.clicked.connect(self.reiniciar_como_administrador)
         self.results_page.recuperacao_pedida.connect(self.recuperar)
         self.summary_page.relatorio_pedido.connect(self.gerar_relatorio_da_operacao)
-        self.audit_page.relatorio_pedido.connect(self.gerar_relatorio)
-        self.audit_page.relatorio_da_operacao_pedido.connect(
+        self.history_page.relatorio_pedido.connect(
             self.gerar_relatorio_de_operacao_antiga
         )
+        self.history_page.ficheiros_pedidos.connect(self._mostrar_ficheiros_do_historico)
+        self.history_page.botao_atualizar.clicked.connect(self._carregar_historico)
         self.accounts_page.conta_criada.connect(
             lambda nome: self.notificar("Conta '%s' criada." % nome, "sucesso")
         )
@@ -303,7 +282,6 @@ class MainWindow(QMainWindow):
         self.devices_page.carregar()
         self.results_page.mostrar_entradas([])
         self.summary_page.limpar()
-        self.estado.definir_estado(AGUARDANDO)
         if self.pode(PERMISSION_MANAGE_USERS):
             self.accounts_page.carregar()
         self.ir_para("dispositivos")
@@ -312,7 +290,6 @@ class MainWindow(QMainWindow):
         """Volta ao painel de autenticacao, sem fechar a janela."""
         self.results_page.mostrar_entradas([])
         self.summary_page.limpar()
-        self.estado.definir_estado(AGUARDANDO)
         self.dispositivo_actual = None
         self.entradas_encontradas = []
         self.mostrar_login()
@@ -367,9 +344,8 @@ class MainWindow(QMainWindow):
             return
         self.banner.limpar()  # a mensagem pertence ao painel onde foi mostrada
         self.conteudo.setCurrentWidget(self.paineis[chave])
-        if chave == "auditoria" and self.pode(PERMISSION_REPORT):
-            self.audit_page.mostrar_eventos(self.audit_log.get_events())
-            self.audit_page.mostrar_operacoes(self.audit_log.get_operations())
+        if chave == "historico" and self.pode(PERMISSION_REPORT):
+            self._carregar_historico()
         elif chave == "contas" and self.pode(PERMISSION_MANAGE_USERS):
             self.accounts_page.carregar()
 
@@ -392,10 +368,14 @@ class MainWindow(QMainWindow):
             self.etiqueta_privilegios.setText(AVISO_ADMIN)
         theme.repolir(self.etiqueta_privilegios)
 
-    def registar_evento(self, **campos) -> None:
-        """Regista um evento de auditoria com o perito autenticado."""
-        campos.setdefault("app_user", self.user.get("username"))
-        self.audit_log.log_event(**campos)
+    def _carregar_historico(self) -> None:
+        """Actualiza o painel com as operacoes guardadas."""
+        self.history_page.mostrar_operacoes(self.historico.get_operations())
+
+    def _mostrar_ficheiros_do_historico(self, identificador: int) -> None:
+        self.history_page.mostrar_ficheiros(
+            self.historico.get_operation_files(identificador)
+        )
 
     # ---------------------------------------------------------------- accoes
 
@@ -420,15 +400,17 @@ class MainWindow(QMainWindow):
         # fixado agora: o utilizador pode mudar de cartao antes de recuperar
         self.dados_do_dispositivo = self.devices_page.informacao_do_dispositivo()
         self.summary_page.limpar()
-        self.results_page.mostrar_entradas([])
-        self.estado.definir_estado(
-            EM_ANALISE, "%s • %s" % (device_path, NOMES_DOS_METODOS.get(metodo, metodo))
-        )
         self.banner.limpar()
         self._bloquear_accoes(True)
 
+        # A analise decorre no painel dos ficheiros: abre-se primeiro, para a
+        # lista se ir preenchendo a vista do utilizador.
+        self.ir_para("resultados")
+        self.results_page.iniciar_analise(device_path, metodo)
+
         self.trabalho = TrabalhoDeAnalise(device_path, metodo, self)
-        self.trabalho.progresso.connect(self.estado.definir_progresso)
+        self.trabalho.progresso.connect(self.results_page.definir_progresso)
+        self.trabalho.encontrados.connect(self.results_page.acrescentar_entradas)
         self.trabalho.concluido.connect(self._analise_concluida)
         self.trabalho.falhou.connect(self._analise_falhada)
         self.trabalho.start()
@@ -436,12 +418,7 @@ class MainWindow(QMainWindow):
     def _analise_concluida(self, entradas: list, diagnostico: dict) -> None:
         self._bloquear_accoes(False)
         self.entradas_encontradas = list(entradas)
-        self.results_page.mostrar_entradas(entradas, self.dispositivo_actual)
-        self.registar_evento(device_path=self.dispositivo_actual, action=ACTION_SCAN)
-        self.estado.definir_estado(
-            CONCLUIDO, "%d ficheiros encontrados" % len(entradas)
-        )
-        self.ir_para("resultados")
+        self.results_page.terminar_analise(self.dispositivo_actual)
         self.notificar(
             *self._resumo_do_varrimento(
                 self.dispositivo_actual, entradas, diagnostico
@@ -450,7 +427,7 @@ class MainWindow(QMainWindow):
 
     def _analise_falhada(self, erro: str) -> None:
         self._bloquear_accoes(False)
-        self.estado.definir_estado(ERRO, erro)
+        self.results_page.falhar(erro)
         self.notificar(erro, "erro")
         if "Acesso negado" in erro or "Administrador" in erro:
             self.botao_elevar.setVisible(True)
@@ -505,32 +482,27 @@ class MainWindow(QMainWindow):
         try:
             operacao.validar_destino(self.dispositivo_actual, destino)
         except ValueError as erro:
-            self.estado.definir_estado(ERRO, str(erro))
+            self.results_page.falhar(str(erro))
             self.notificar(str(erro), "erro")
             return
 
         self.destino_actual = destino
-        self.estado.definir_estado(
-            EM_RECUPERACAO, "%d ficheiros para %s" % (len(entradas), destino)
-        )
+        self.results_page.iniciar_recuperacao(len(entradas), destino)
         self.banner.limpar()
         self._bloquear_accoes(True)
 
         self.trabalho = TrabalhoDeRecuperacao(
             self.dispositivo_actual, entradas, destino, self
         )
-        self.trabalho.progresso.connect(self.estado.definir_progresso)
+        self.trabalho.progresso.connect(self.results_page.definir_progresso)
         self.trabalho.concluido.connect(self._recuperacao_concluida)
         self.trabalho.falhou.connect(self._recuperacao_falhada)
         self.trabalho.start()
 
     def _recuperacao_concluida(self, resultados: list) -> None:
         self._bloquear_accoes(False)
-        for resultado in resultados:
-            self._registar_resultado(resultado)
-
         totais = operacao.resumo(len(self.entradas_encontradas), resultados)
-        identificador = self.audit_log.log_operation(
+        identificador = self.historico.log_operation(
             ficheiros=resultados,
             inicio=self.inicio_da_operacao,
             fim=_agora(),
@@ -542,13 +514,9 @@ class MainWindow(QMainWindow):
             **totais,
             **self.dados_do_dispositivo,
         )
-        operacao_registada = self.audit_log.get_operations(identificador)[0]
+        operacao_registada = self.historico.get_operations(identificador)[0]
         self.summary_page.mostrar_operacao(operacao_registada, resultados)
-        self.estado.definir_estado(
-            CONCLUIDO,
-            "%d recuperados, %d nao recuperados"
-            % (totais["recuperados"], totais["nao_recuperados"]),
-        )
+        self.results_page.terminar_analise(self.dispositivo_actual)
         self.ir_para("resumo")
         self.notificar(
             "%d de %d ficheiros recuperados para %s."
@@ -558,7 +526,7 @@ class MainWindow(QMainWindow):
 
     def _recuperacao_falhada(self, erro: str) -> None:
         self._bloquear_accoes(False)
-        self.estado.definir_estado(ERRO, erro)
+        self.results_page.falhar(erro)
         self.notificar("Falha na recuperacao: %s" % erro, "erro")
 
     @staticmethod
@@ -569,25 +537,6 @@ class MainWindow(QMainWindow):
             for r in resultados if r.get("erro")
         ]
         return "; ".join(erros)
-
-    def _registar_resultado(self, resultado: dict) -> None:
-        """Escreve na cadeia de custodia o que aconteceu a um ficheiro."""
-        accao = (
-            ACTION_CARVING if self.metodo_actual == METODO_CARVING else ACTION_RECOVER
-        )
-        recuperado = resultado.get("estado") == ESTADO_RECUPERADO
-        self.registar_evento(
-            device_path=self.dispositivo_actual,
-            action=accao,
-            file_path=resultado.get("caminho") or resultado.get("nome"),
-            file_hash=resultado.get("file_hash"),
-        )
-        self.registar_evento(
-            device_path=self.dispositivo_actual,
-            action=ACTION_VERIFY_OK if recuperado else ACTION_VERIFY_FAILED,
-            file_path=resultado.get("caminho") or resultado.get("nome"),
-            file_hash=resultado.get("file_hash"),
-        )
 
     def _bloquear_accoes(self, bloqueado: bool) -> None:
         """Impede iniciar outra operacao enquanto uma esta a decorrer."""
@@ -600,12 +549,12 @@ class MainWindow(QMainWindow):
         """Volta a gerar o relatorio de uma operacao guardada no historico."""
         if not self._exigir(PERMISSION_REPORT):
             return
-        operacoes = self.audit_log.get_operations(identificador)
+        operacoes = self.historico.get_operations(identificador)
         if not operacoes:
             self.notificar("Operacao #%s nao encontrada." % identificador, "aviso")
             return
         self._exportar_relatorio(
-            operacoes[0], self.audit_log.get_operation_files(identificador)
+            operacoes[0], self.historico.get_operation_files(identificador)
         )
 
     def gerar_relatorio_da_operacao(self) -> None:
@@ -634,43 +583,8 @@ class MainWindow(QMainWindow):
             self.notificar("Falha ao gerar o relatorio: %s" % erro, "erro")
             return
 
-        self.registar_evento(
-            device_path=operacao_registada.get("device_path"),
-            action=ACTION_REPORT,
-            file_path=destino,
-        )
         self.notificar("Relatorio gerado em %s." % destino, "sucesso")
         self.abrir_ficheiro(destino)
-
-    def gerar_relatorio(self) -> None:
-        """Exporta os eventos de auditoria para PDF e abre o ficheiro."""
-        if not self._exigir(PERMISSION_REPORT):
-            return
-        eventos = self.audit_log.get_events()
-        if not eventos:
-            self.notificar("Ainda nao ha eventos de auditoria para relatar.", "aviso")
-            return
-
-        destino = self.escolher_ficheiro_de_destino("cadeia_de_custodia.pdf")
-        if not destino:
-            return
-
-        try:
-            report.generate_report(eventos, destino)
-        except Exception as erro:
-            self.notificar("Falha ao gerar o relatorio: %s" % erro, "erro")
-            return
-
-        self.registar_evento(
-            device_path=self.dispositivo_actual,
-            action=ACTION_REPORT,
-            file_path=destino,
-        )
-        self.audit_page.mostrar_eventos(self.audit_log.get_events())
-        self.notificar("Relatorio gerado em %s." % destino, "sucesso")
-        self.abrir_ficheiro(destino)
-
-    # ------------------------------------------------------------- auxiliares
 
     def escolher_imagem(self) -> None:
         """Escolhe uma imagem de disco (.dd/.img) para analisar."""
@@ -706,7 +620,7 @@ class MainWindow(QMainWindow):
             pass
 
     def closeEvent(self, event):  # noqa: N802 (nome imposto pelo Qt)
-        self.audit_log.close()
+        self.historico.close()
         self.auth_store.close()
         super().closeEvent(event)
 

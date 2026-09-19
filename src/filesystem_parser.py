@@ -229,7 +229,14 @@ def _describe(entry, path: str, partition: dict, fs,
     }
 
 
-def _orfaos(fs, partition, entries, inodes) -> None:
+def _anunciar(entries, entrada, ao_encontrar) -> None:
+    """Junta a entrada a lista e entrega-a logo a quem estiver a acompanhar."""
+    entries.append(entrada)
+    if ao_encontrar is not None:
+        ao_encontrar(entrada)
+
+
+def _orfaos(fs, partition, entries, inodes, ao_encontrar=None) -> None:
     """Ficheiros que o Sleuth Kit encontra sem entrada de directorio.
 
     O TSK recupera o nome a partir do registo de metadados e junta-os na
@@ -246,12 +253,13 @@ def _orfaos(fs, partition, entries, inodes) -> None:
         if not _is_deleted(entry) or _is_directory(entry):
             continue
         try:
-            entries.append(
-                _describe(entry, CAMINHO_DOS_ORFAOS + "/" + _nome_da_entrada(entry),
-                          partition, fs, ORIGEM_DIRECTORIO)
+            descricao = _describe(
+                entry, CAMINHO_DOS_ORFAOS + "/" + _nome_da_entrada(entry),
+                partition, fs, ORIGEM_DIRECTORIO,
             )
         except OSError:
             continue
+        _anunciar(entries, descricao, ao_encontrar)
         inodes.add(int(meta.addr))
 
 
@@ -263,7 +271,7 @@ def _total_estimado(fs) -> int:
 
 
 def _registos_nao_alocados(fs, partition, entries, inodes, progresso=None,
-                           ja_feitos=0, total=0) -> int:
+                           ja_feitos=0, total=0, ao_encontrar=None) -> int:
     """Percorre os registos de metadados nao alocados (a MFT, no NTFS).
 
     E aqui que aparecem os ficheiros apagados em NTFS: ao eliminar, a entrada
@@ -293,15 +301,16 @@ def _registos_nao_alocados(fs, partition, entries, inodes, progresso=None,
         if meta.type == tipo_directoria or not meta.size:
             continue
         try:
-            entries.append(_describe(ficheiro, "", partition, fs, ORIGEM_REGISTO))
+            descricao = _describe(ficheiro, "", partition, fs, ORIGEM_REGISTO)
         except OSError:
             continue
+        _anunciar(entries, descricao, ao_encontrar)
         inodes.add(inode)
     return examinados
 
 
 def _walk(fs, directory, parent_path, partition, entries, visited, depth,
-          inodes=None) -> None:
+          inodes=None, ao_encontrar=None) -> None:
     inodes = inodes if inodes is not None else set()
     for entry in directory:
         if entry.info.name is None:
@@ -313,9 +322,10 @@ def _walk(fs, directory, parent_path, partition, entries, visited, depth,
 
         if _is_deleted(entry):
             try:
-                entries.append(_describe(entry, path, partition, fs))
+                descricao = _describe(entry, path, partition, fs)
             except OSError:  # entrada corrompida: continua para a seguinte
                 continue
+            _anunciar(entries, descricao, ao_encontrar)
             if entry.info.meta is not None:
                 inodes.add(int(entry.info.meta.addr))
 
@@ -329,11 +339,11 @@ def _walk(fs, directory, parent_path, partition, entries, visited, depth,
             except OSError:  # directoria apagada e ja ilegivel
                 continue
             _walk(fs, sub_directory, path, partition, entries, visited, depth + 1,
-                  inodes)
+                  inodes, ao_encontrar)
 
 
 def scan_deleted_entries(device_path: str, diagnostico: dict | None = None,
-                         progresso=None) -> list[dict]:
+                         progresso=None, ao_encontrar=None) -> list[dict]:
     """Lista as entradas apagadas (nao alocadas) do dispositivo indicado.
 
     Combina tres fontes, por esta ordem: as entradas ainda presentes nas
@@ -348,7 +358,9 @@ def scan_deleted_entries(device_path: str, diagnostico: dict | None = None,
     numero de particoes vistas, de sistemas de ficheiros abertos e de registos
     examinados — util para distinguir "nao ha nada apagado" de "nao foi
     possivel ler o sistema de ficheiros". ``progresso`` e chamado com
-    ``(registos_feitos, total_estimado)`` ao longo do varrimento.
+    ``(registos_feitos, total_estimado)`` ao longo do varrimento e
+    ``ao_encontrar`` e chamado com cada entrada assim que e encontrada, para a
+    interface a poder mostrar sem esperar pelo fim.
     """
     tsk = _require_pytsk3()
     image = _abrir_imagem(device_path)
@@ -375,11 +387,11 @@ def scan_deleted_entries(device_path: str, diagnostico: dict | None = None,
         except (OSError, IOError):
             root = None
         if root is not None:
-            _walk(fs, root, "", partition, entries, set(), 0, inodes)
-        _orfaos(fs, partition, entries, inodes)
+            _walk(fs, root, "", partition, entries, set(), 0, inodes, ao_encontrar)
+        _orfaos(fs, partition, entries, inodes, ao_encontrar)
         resumo["registos_examinados"] += _registos_nao_alocados(
             fs, partition, entries, inodes, progresso,
-            resumo["registos_examinados"], _total_estimado(fs),
+            resumo["registos_examinados"], _total_estimado(fs), ao_encontrar,
         )
 
     if diagnostico is not None:

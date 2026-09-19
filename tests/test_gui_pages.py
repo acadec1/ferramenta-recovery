@@ -13,7 +13,7 @@ try:
 
     from src.gui import theme
     from src.gui.pages.accounts import ERRO_CONFIRMACAO, AccountsPage
-    from src.gui.pages.audit import AuditPage
+    from src.gui.pages.history import HistoryPage
     from src.gui.pages.devices import DevicesPage
     from src.gui.pages.login import ERRO_CREDENCIAIS, LoginPage
     from src.gui.pages.results import ResultsPage
@@ -33,15 +33,13 @@ try:
         TituloDeSeccao,
         formatar_tamanho,
     )
+    from src.gui import workers
     from src.gui.workers import TrabalhoDeAnalise, TrabalhoDeRecuperacao
 except ImportError:  # pragma: no cover - depende do ambiente
     LoginPage = None
 
 from src import auth
-from src.audit_log import (
-    ACTION_RECOVER,
-    ACTION_SCAN,
-    ACTION_VERIFY_OK,
+from src.historico import (
     ESTADO_FALHADO,
     ESTADO_RECUPERADO,
     METODO_CARVING,
@@ -67,12 +65,14 @@ VOLUMES = [
 ]
 
 ENTRADAS = [
-    {"name": "relatorio.docx", "path": "/Documentos/relatorio.docx", "size": 15000,
+    {"nome": "relatorio.docx", "name": "relatorio.docx", "tipo": "DOCX",
+     "tamanho": 15000, "size": 15000, "path": "/Documentos/relatorio.docx",
      "mtime_iso": "2026-08-14T22:13:20+00:00", "crtime_iso": None,
      "fs_type": "TSK_FS_TYPE_NTFS", "resident": False,
-     "runs": [{"block": 100, "count": 4}]},
-    {"name": "foto.jpg", "path": "/Imagens/foto.jpg", "size": 4096,
-     "mtime_iso": None, "runs": [{"block": 300, "count": 1}]},
+     "metodo": METODO_METADADOS, "runs": [{"block": 100, "count": 4}]},
+    {"nome": "foto.jpg", "name": "foto.jpg", "tipo": "JPG", "tamanho": 4096,
+     "size": 4096, "path": "/Imagens/foto.jpg", "mtime_iso": None,
+     "metodo": METODO_METADADOS, "runs": [{"block": 300, "count": 1}]},
 ]
 
 
@@ -371,16 +371,61 @@ class ResultsPageTest(PainelBase):
         self.assertEqual(self.pagina.tabela.item(0, 0).text(), "relatorio.docx")
         self.assertEqual(self.pagina.tabela.item(0, 1).text(), "DOCX")
         self.assertEqual(self.pagina.tabela.item(0, 2).text(), "14.6 KB")
-        self.assertEqual(self.pagina.tabela.item(0, 3).text(), "/Documentos/relatorio.docx")
         self.assertIn("2 ficheiros encontrados", self.pagina.etiqueta_contagem.text())
-        self.assertIn(r"\\.\D:", self.pagina.etiqueta_contagem.text())
+
+    def test_barra_so_aparece_com_a_analise(self):
+        pagina = self.registar(ResultsPage())
+        self.assertFalse(pagina.estado.isVisibleTo(pagina))
+
+        pagina.iniciar_analise(r"\\.\D:", METODO_METADADOS)
+
+        self.assertTrue(pagina.estado.isVisibleTo(pagina))
+        self.assertEqual(pagina.estado.estado, EM_ANALISE)
+        self.assertIn("metadados", pagina.estado.detalhe.text())
+        self.assertEqual(pagina.tabela.rowCount(), 0)
+        self.assertEqual(pagina.etiqueta_contagem.text(), "0 ficheiros encontrados")
+
+    def test_lista_preenche_se_durante_a_analise(self):
+        pagina = self.registar(ResultsPage())
+        pagina.iniciar_analise(r"\\.\D:", METODO_METADADOS)
+
+        pagina.acrescentar_entradas([ENTRADAS[0]])
+        self.assertEqual(pagina.tabela.rowCount(), 1)
+        self.assertEqual(pagina.etiqueta_contagem.text(), "1 ficheiros encontrados")
+        self.assertTrue(pagina.botao_selecionar_tudo.isEnabled())
+
+        pagina.acrescentar_entradas([ENTRADAS[1]])
+        self.assertEqual(pagina.tabela.rowCount(), 2)
+        self.assertEqual([e["nome"] for e in pagina.entradas],
+                         ["relatorio.docx", "foto.jpg"])
+
+    def test_progresso_e_fim_da_analise(self):
+        pagina = self.registar(ResultsPage())
+        pagina.iniciar_analise(r"\\.\D:", METODO_METADADOS)
+        pagina.definir_progresso(30, 60)
+        self.assertEqual(pagina.estado.percentagem(), 50)
+
+        pagina.acrescentar_entradas(ENTRADAS)
+        pagina.terminar_analise(r"\\.\D:")
+
+        self.assertEqual(pagina.estado.estado, CONCLUIDO)
+        self.assertIn("2 ficheiros encontrados", pagina.etiqueta_contagem.text())
+
+    def test_recuperacao_usa_a_mesma_barra(self):
+        self.pagina.iniciar_recuperacao(3, r"D:\Recuperados")
+        self.assertTrue(self.pagina.estado.isVisibleTo(self.pagina))
+        self.assertIn("3 ficheiros", self.pagina.estado.detalhe.text())
+
+    def test_erro_aparece_na_pagina(self):
+        self.pagina.falhar("Acesso negado")
+        self.assertEqual(self.pagina.estado.estado, ERRO)
+        self.assertIn("Acesso negado", self.pagina.estado.detalhe.text())
 
     def test_detalhes_de_uma_entrada_de_metadados(self):
         self.pagina.tabela.selectRow(0)
         valores = self.pagina.painel.valores()
         self.assertEqual(self.pagina.painel.etiqueta_titulo.text(), "relatorio.docx")
         self.assertEqual(valores["Tipo:"], "DOCX")
-        self.assertEqual(valores["Caminho:"], "/Documentos/relatorio.docx")
         self.assertEqual(valores["Encontrado por:"], "metadados")
         self.assertEqual(valores["Clusters:"], "4")
 
@@ -397,9 +442,8 @@ class ResultsPageTest(PainelBase):
     def test_detalhes_de_varias_entradas(self):
         self.pagina.tabela.selectAll()
         self.assertEqual(
-            self.pagina.painel.etiqueta_titulo.text(), "2 entradas seleccionadas"
+            self.pagina.painel.etiqueta_titulo.text(), "2 ficheiros seleccionados"
         )
-        self.assertEqual(self.pagina.painel.valores()["Entradas:"], "2")
 
     def test_pedido_de_recuperacao(self):
         pedidos = self.capturar(self.pagina.recuperacao_pedida)
@@ -408,7 +452,7 @@ class ResultsPageTest(PainelBase):
         self.pagina.painel.botao_accao.click()
 
         self.assertEqual(len(pedidos), 1)
-        self.assertEqual([e["name"] for e in pedidos[0]], ["foto.jpg"])
+        self.assertEqual([e["nome"] for e in pedidos[0]], ["foto.jpg"])
 
     def test_sem_seleccao_nao_pede_recuperacao(self):
         pedidos = self.capturar(self.pagina.recuperacao_pedida)
@@ -425,6 +469,7 @@ class ResultsPageTest(PainelBase):
         self.pagina.mostrar_entradas([])
         self.assertEqual(self.pagina.tabela.rowCount(), 0)
         self.assertFalse(self.pagina.botao_selecionar_tudo.isEnabled())
+        self.assertFalse(self.pagina.estado.isVisibleTo(self.pagina))
 
 
 class SummaryPageTest(PainelBase):
@@ -577,7 +622,7 @@ class TrabalhosTest(PainelBase):
         concluidos = self.capturar(trabalho.concluido)
         progressos = self.capturar(trabalho.progresso)
 
-        def analisar(device_path, metodo, progresso=None):
+        def analisar(device_path, metodo, progresso=None, ao_encontrar=None):
             progresso(5, 10)
             return [{"nome": "x.bin"}], {"metodo": metodo}
 
@@ -586,6 +631,23 @@ class TrabalhosTest(PainelBase):
 
         self.assertEqual(progressos, [(5, 10)])
         self.assertEqual(concluidos[0], ([{"nome": "x.bin"}], {"metodo": "metadados"}))
+
+    def test_entradas_sao_enviadas_em_lotes_durante_a_analise(self):
+        trabalho = TrabalhoDeAnalise(r"\\.\D:", METODO_METADADOS)
+        lotes = self.capturar(trabalho.encontrados)
+
+        def analisar(device_path, metodo, progresso=None, ao_encontrar=None):
+            for numero in range(3):
+                ao_encontrar({"nome": "f%d.bin" % numero})
+            return [], {}
+
+        with mock.patch.object(workers, "TAMANHO_DO_LOTE", 2), \
+             mock.patch("src.gui.workers.operacao.analisar", side_effect=analisar):
+            trabalho.run()
+
+        # dois no primeiro lote, o terceiro no lote final
+        self.assertEqual([len(lote) for lote in lotes], [2, 1])
+        self.assertEqual(lotes[0][0]["nome"], "f0.bin")
 
     def test_analise_falhada(self):
         trabalho = TrabalhoDeAnalise(r"\\.\D:", METODO_METADADOS)
@@ -619,81 +681,67 @@ class TrabalhosTest(PainelBase):
         self.assertEqual(falhas, ["destino no mesmo disco"])
 
 
-class AuditPageTest(PainelBase):
+class HistoryPageTest(PainelBase):
+    OPERACOES = [
+        {"id": 2, "inicio": "2026-09-19T11:00:00+00:00", "device_path": r"\\.\D:",
+         "metodo": METODO_CARVING, "encontrados": 92, "recuperados": 13,
+         "nao_recuperados": 2, "filesystem": "exFAT",
+         "pasta_destino": r"D:\Recuperados", "app_user": "admin"},
+        {"id": 1, "inicio": "2026-09-19T10:00:00+00:00", "device_path": r"\\.\C:",
+         "metodo": METODO_METADADOS, "encontrados": 5, "recuperados": 5,
+         "nao_recuperados": 0},
+    ]
+
     def setUp(self):
-        self.pagina = self.registar(AuditPage())
-        self.eventos = [
-            {"timestamp": "2026-09-06T10:00:00+00:00", "device_path": r"\\.\D:",
-             "action": ACTION_SCAN, "file_path": None, "file_hash": None,
-             "app_user": "admin"},
-            {"timestamp": "2026-09-06T10:01:00+00:00", "device_path": r"\\.\D:",
-             "action": ACTION_RECOVER, "file_path": "D:/saida/foto.jpg",
-             "file_hash": "a" * 64, "app_user": "operador"},
-            {"timestamp": "2026-09-06T10:01:01+00:00", "device_path": r"\\.\D:",
-             "action": ACTION_VERIFY_OK, "file_path": "D:/saida/foto.jpg",
-             "file_hash": "a" * 64, "app_user": "operador"},
-        ]
+        self.pagina = self.registar(HistoryPage())
 
-    def test_tabela_e_resumo(self):
-        self.pagina.mostrar_eventos(self.eventos)
-        self.assertEqual(self.pagina.tabela.rowCount(), 3)
-        self.assertEqual(self.pagina.tabela.item(1, 2).text(), ACTION_RECOVER)
-        self.assertEqual(self.pagina.tabela.item(1, 5).text(), "operador")
-        self.assertEqual(self.pagina.etiqueta_contagem.text(), "3 eventos")
+    def test_lista_as_operacoes(self):
+        self.pagina.mostrar_operacoes(self.OPERACOES)
 
-        valores = self.pagina.painel.valores()
-        self.assertEqual(valores["Ficheiros recuperados:"], "1")
-        self.assertEqual(valores["Verificados com sucesso:"], "1")
-        self.assertEqual(valores["Verificacoes falhadas:"], "0")
-        self.assertEqual(valores["Peritos:"], "admin, operador")
+        self.assertEqual(self.pagina.tabela.rowCount(), 2)
+        self.assertEqual(self.pagina.tabela.item(0, 0).text(), "2")
+        self.assertEqual(self.pagina.tabela.item(0, 1).text(), "2026-09-19 11:00:00")
+        self.assertIn("File Carving", self.pagina.tabela.item(0, 3).text())
+        self.assertEqual(self.pagina.tabela.item(0, 5).text(), "13")
+        self.assertEqual(self.pagina.etiqueta_contagem.text(), "2 operacoes")
 
-    def test_sem_eventos_desactiva_o_relatorio(self):
-        self.pagina.mostrar_eventos([])
+    def test_sem_operacoes(self):
+        self.pagina.mostrar_operacoes([])
         self.assertEqual(self.pagina.tabela.rowCount(), 0)
+        self.assertIsNone(self.pagina.operacao_seleccionada())
         self.assertFalse(self.pagina.painel.botao_accao.isEnabled())
+
+    def test_seleccionar_mostra_detalhes_e_pede_ficheiros(self):
+        pedidos = self.capturar(self.pagina.ficheiros_pedidos)
+        self.pagina.mostrar_operacoes(self.OPERACOES)
+
+        self.pagina.tabela.selectRow(0)
+
+        self.assertEqual(pedidos, [2])
+        self.assertEqual(self.pagina.painel.etiqueta_titulo.text(), "Operacao #2")
+        self.assertEqual(self.pagina.painel.valores()["Recuperados:"], "13")
+
+    def test_ficheiros_da_operacao(self):
+        self.pagina.mostrar_ficheiros([
+            {"nome": "foto.jpg", "tipo": "JPG", "tamanho": 2048,
+             "estado": ESTADO_RECUPERADO},
+            {"nome": "nota.txt", "tipo": "TXT", "tamanho": 100,
+             "estado": ESTADO_FALHADO},
+        ])
+        self.assertEqual(self.pagina.tabela_de_ficheiros.rowCount(), 2)
+        self.assertEqual(self.pagina.tabela_de_ficheiros.item(0, 2).text(), "2.0 KB")
+        self.assertEqual(
+            self.pagina.tabela_de_ficheiros.item(1, 3).text(), ESTADO_FALHADO
+        )
 
     def test_pedido_de_relatorio(self):
         pedidos = self.capturar(self.pagina.relatorio_pedido)
-        self.pagina.mostrar_eventos(self.eventos)
+        self.pagina.mostrar_operacoes(self.OPERACOES)
+        self.pagina.tabela.selectRow(1)
+
         self.pagina.painel.botao_accao.click()
-        self.assertEqual(len(pedidos), 1)
 
-    def test_historico_de_operacoes(self):
-        self.pagina.mostrar_operacoes([
-            {"id": 2, "inicio": "2026-09-19T11:00:00+00:00", "device_path": r"\.\D:",
-             "metodo": METODO_CARVING, "encontrados": 92, "recuperados": 13,
-             "nao_recuperados": 2},
-            {"id": 1, "inicio": "2026-09-19T10:00:00+00:00", "device_path": r"\.\C:",
-             "metodo": METODO_METADADOS, "encontrados": 5, "recuperados": 5,
-             "nao_recuperados": 0},
-        ])
-
-        self.assertEqual(self.pagina.tabela_de_operacoes.rowCount(), 2)
-        self.assertEqual(self.pagina.tabela_de_operacoes.item(0, 0).text(), "2")
-        self.assertEqual(self.pagina.tabela_de_operacoes.item(0, 1).text(),
-                         "2026-09-19 11:00:00")
-        self.assertIn("File Carving", self.pagina.tabela_de_operacoes.item(0, 3).text())
-        self.assertEqual(self.pagina.tabela_de_operacoes.item(0, 5).text(), "13")
-        self.assertEqual(self.pagina.etiqueta_operacoes.text(), "2 operacoes")
-
-    def test_relatorio_de_uma_operacao_do_historico(self):
-        pedidos = self.capturar(self.pagina.relatorio_da_operacao_pedido)
-        self.pagina.mostrar_operacoes([
-            {"id": 7, "inicio": "2026-09-19T11:00:00+00:00", "metodo": METODO_CARVING},
-        ])
-        self.assertFalse(self.pagina.botao_relatorio_da_operacao.isEnabled())
-
-        self.pagina.tabela_de_operacoes.selectRow(0)
-        self.assertTrue(self.pagina.botao_relatorio_da_operacao.isEnabled())
-        self.pagina.botao_relatorio_da_operacao.click()
-
-        self.assertEqual(pedidos, [7])
-
-    def test_sem_operacoes_no_historico(self):
-        self.pagina.mostrar_operacoes([])
-        self.assertEqual(self.pagina.tabela_de_operacoes.rowCount(), 0)
-        self.assertIsNone(self.pagina.operacao_seleccionada())
-        self.assertFalse(self.pagina.botao_relatorio_da_operacao.isEnabled())
+        self.assertEqual(pedidos, [1])
 
 
 class AccountsPageTest(PainelBase):

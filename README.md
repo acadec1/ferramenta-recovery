@@ -1,8 +1,9 @@
 # FRDA — Ferramenta de Recuperação de Dados Apagados
 
-Ferramenta forense local para deteção, recuperação e auditoria de ficheiros apagados
-em dispositivos de armazenamento (NTFS, FAT32, exFAT), com carving por assinatura,
-verificação de integridade SHA-256, registo de cadeia de custódia e relatórios em PDF.
+Ferramenta local de recuperação de ficheiros apagados em dispositivos de
+armazenamento (NTFS, FAT32, exFAT), com recuperação por metadados e por
+assinaturas (file carving), verificação de integridade SHA-256, histórico das
+operações e relatórios em PDF.
 
 ## Requisitos
 
@@ -43,9 +44,9 @@ src/
   recovery.py           Reconstrução de ficheiros a partir dos clusters/sectores
   carving.py            Carving por assinatura binária (JPEG, PDF, DOCX)
   integrity.py          Hash SHA-256 e verificação de integridade
-  audit_log.py          Registo de auditoria / cadeia de custódia (sqlite3)
+  historico.py          Histórico das operações realizadas (sqlite3)
   operacao.py           Execução de uma operação (análise + recuperação)
-  report.py             Relatórios PDF: cadeia de custódia e operação
+  report.py             Relatório PDF da operação
   gui/main_window.py    Janela única: barra lateral, painéis e orquestração
   gui/theme.py          Tema visual (claro institucional)
   gui/icons.py          Ícones SVG desenhados no próprio código
@@ -54,7 +55,7 @@ src/
   gui/pages/devices.py  Discos físicos e volumes lógicos
   gui/pages/results.py  Ficheiros encontrados e recuperação
   gui/pages/summary.py  Resultados: cartões de estatísticas e tabela final
-  gui/pages/audit.py    Histórico de operações e cadeia de custódia
+  gui/pages/history.py  Histórico das operações e reemissão de relatórios
   gui/workers.py        Análise e recuperação em segundo plano
   gui/pages/accounts.py Contas de acesso (só administrador)
 tests/                  Testes unitários (mocks de pytsk3/hardware)
@@ -84,8 +85,10 @@ A interface segue a ordem do processo pericial, numerada na barra lateral:
    do sistema de ficheiros e devolve nomes e caminhos originais) ou *recuperação
    por assinaturas / File Carving* (procura cabeçalhos e rodapés nos dados em
    bruto, sem depender do sistema de ficheiros).
-3. **A análise arranca sozinha** — não é um passo separado. Corre noutra linha
-   de execução, para a janela continuar a responder e o progresso avançar.
+3. **A análise arranca sozinha e abre logo o painel dos ficheiros** — não é um
+   passo separado. A barra de progresso aparece nesse painel e a lista
+   **preenche-se em tempo real**, ficheiro a ficheiro, à medida que são
+   encontrados; não é preciso esperar pelo fim do varrimento.
 4. **Escolher os ficheiros** — a tabela mostra nome, tipo/extensão, tamanho,
    caminho original e data de modificação.
 5. **Recuperar** — a pasta de destino é pedida nesta altura e **tem de ser
@@ -111,13 +114,17 @@ O estado aparece sempre no topo, com um ponto colorido e a barra de progresso:
 
 ### Histórico das operações
 
-Cada operação fica registada em SQLite (`frda_audit.db`), nas tabelas
+Cada operação fica registada em SQLite (`frda_historico.db`), nas tabelas
 `operacoes` e `operacao_ficheiros`: dispositivo, tipo e capacidade, sistema de
 ficheiros, método, totais, pasta de destino, observações e a lista de ficheiros
 processados com o respectivo estado e SHA-256. **Os ficheiros recuperados não
 são guardados na base de dados** — ficam apenas na pasta de destino escolhida. O
-painel *Cadeia de custódia* lista o histórico e permite voltar a gerar o
-relatório PDF de qualquer operação anterior.
+painel *Histórico de operações* lista o que já foi feito, mostra os ficheiros de
+cada operação e permite voltar a gerar o respectivo relatório PDF.
+
+A ferramenta é de **recuperação de dados**, não de análise forense: não mantém
+cadeia de custódia nem regista acção a acção. O que guarda é o registo da
+operação, para saber o que foi feito e poder reemitir o relatório.
 
 ## Interface
 
@@ -188,7 +195,7 @@ distingue "não há nada apagado" de "não consegui ler este disco".
 | Analisar (metadados e carving)| sim           | sim      |
 | Recuperar ficheiros           | sim           | sim      |
 | Relatório PDF da operação     | sim           | sim      |
-| Histórico e cadeia de custódia| sim           | não      |
+| Histórico de operações        | sim           | não      |
 | Criar contas                  | sim           | não      |
 
 O operador não vê sequer as entradas de relatório e de contas na barra lateral
@@ -196,13 +203,12 @@ O operador não vê sequer as entradas de relatório e de contas na barra latera
 contas no painel **Contas de acesso**, disponível apenas ao administrador.
 
 As passwords são guardadas com PBKDF2-HMAC-SHA256 (200 000 iterações e salt
-aleatório por conta) na tabela `users` do ficheiro `frda_audit.db` — nunca em
+aleatório por conta) na tabela `users` do ficheiro `frda_historico.db` — nunca em
 claro. As passwords iniciais são públicas por estarem aqui documentadas: devem
 ser substituídas por contas próprias antes de qualquer uso real.
 
-O perito autenticado fica registado em cada evento da cadeia de custódia (coluna
-`app_user`) e aparece no relatório PDF, ao lado do utilizador do sistema
-operativo.
+O utilizador autenticado fica registado em cada operação (coluna `app_user`) e
+aparece no relatório PDF, ao lado do utilizador do sistema operativo.
 
 ## Como testar
 
@@ -213,7 +219,7 @@ py -3.11 -m unittest discover -s tests -t . -v      # suite completa
 py -3.11 -m unittest tests.test_carving -v          # um módulo isolado
 ```
 
-295 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
+277 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
 sintéticas criadas em ficheiros temporários — nenhum dispositivo físico é tocado. Os
 testes da GUI correm com Qt em modo *offscreen* e ficam em `skipped` se o PySide6 não
 estiver instalado; os de `report.py` ficam em `skipped` sem o ReportLab.
@@ -263,16 +269,16 @@ Os dois hashes SHA-256 devem coincidir.
    forense: nunca gravar no dispositivo em análise — a aplicação recusa-o.
 7. Em **3. Resultados**, confirmar os cartões de estatísticas e a tabela, e
    carregar em **Gerar relatório PDF**.
-8. Confirmar a integridade comparando o SHA-256 registado na auditoria com o do
+8. Confirmar a integridade comparando o SHA-256 registado no histórico com o do
    ficheiro recuperado:
 
 ```
 py -3.11 -c "from src.integrity import verify_integrity; print(verify_integrity('<hash do relatorio>', r'D:\saida\ficheiro.jpg'))"
 ```
 
-O registo de auditoria fica em `frda_audit.db` (SQLite) na pasta de trabalho e pode
-ser consultado a qualquer momento:
+O histórico fica em `frda_historico.db` (SQLite) na pasta de trabalho e pode ser
+consultado a qualquer momento:
 
 ```
-py -3.11 -c "from src.audit_log import AuditLog; [print(e) for e in AuditLog('frda_audit.db').get_events()]"
+py -3.11 -c "from src.historico import Historico; [print(o) for o in Historico('frda_historico.db').get_operations()]"
 ```

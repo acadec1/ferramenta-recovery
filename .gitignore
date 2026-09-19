@@ -26,3 +26,7 @@ recovered/
 .vscode/
 Thumbs.db
 desktop.ini
+
+# Documentos de trabalho
+*.docx
+~$*
