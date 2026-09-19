@@ -17,14 +17,25 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.audit_log import ACTION_RECOVER, ACTION_VERIFY_FAILED, ACTION_VERIFY_OK
+from src.audit_log import (
+    ACTION_CARVING,
+    ACTION_RECOVER,
+    ACTION_VERIFY_FAILED,
+    ACTION_VERIFY_OK,
+    NOMES_DOS_METODOS,
+)
 from src.gui import theme
-from src.gui.widgets import CabecalhoDePainel, PainelDeDetalhes
+from src.gui.widgets import CabecalhoDePainel, PainelDeDetalhes, TituloDeSeccao
 
-TITULO = "Cadeia de custodia"
-DESCRICAO = "Registo de todas as accoes desta e das sessoes anteriores."
+TITULO = "Historico e cadeia de custodia"
+DESCRICAO = "Operacoes realizadas e registo de todas as accoes, accao a accao."
 COLUNAS = ("Data/Hora", "Dispositivo", "Accao", "Ficheiro", "SHA-256", "Perito")
-ACCAO = "Gerar relatorio PDF"
+COLUNAS_DAS_OPERACOES = (
+    "#", "Data/Hora", "Dispositivo", "Metodo", "Encontrados", "Recuperados",
+    "Nao recuperados",
+)
+ACCAO = "Gerar relatorio da cadeia"
+ACCAO_DA_OPERACAO = "Relatorio da operacao"
 
 
 def _data_legivel(timestamp) -> str:
@@ -50,12 +61,36 @@ class AuditPage(QWidget):
     """Tabela de eventos de auditoria e botao de exportacao do relatorio."""
 
     relatorio_pedido = Signal()
+    relatorio_da_operacao_pedido = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.eventos: list[dict] = []
 
         self.cabecalho = CabecalhoDePainel(TITULO, DESCRICAO)
+        self.operacoes: list[dict] = []
+        self.etiqueta_operacoes = QLabel("0 operacoes")
+        self.etiqueta_operacoes.setObjectName(theme.SUBTITULO)
+        self.botao_relatorio_da_operacao = QPushButton(ACCAO_DA_OPERACAO)
+        self.botao_relatorio_da_operacao.setObjectName(theme.BOTAO_SECUNDARIO)
+        self.botao_relatorio_da_operacao.setEnabled(False)
+
+        self.tabela_de_operacoes = QTableWidget(0, len(COLUNAS_DAS_OPERACOES))
+        self.tabela_de_operacoes.setHorizontalHeaderLabels(COLUNAS_DAS_OPERACOES)
+        self.tabela_de_operacoes.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tabela_de_operacoes.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.tabela_de_operacoes.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tabela_de_operacoes.setAlternatingRowColors(True)
+        self.tabela_de_operacoes.verticalHeader().setVisible(False)
+        self.tabela_de_operacoes.setMaximumHeight(170)
+        cabecalho_operacoes = self.tabela_de_operacoes.horizontalHeader()
+        cabecalho_operacoes.setStretchLastSection(False)
+        cabecalho_operacoes.setSectionResizeMode(2, QHeaderView.Stretch)
+        for coluna in (0, 1, 3, 4, 5, 6):
+            cabecalho_operacoes.setSectionResizeMode(
+                coluna, QHeaderView.ResizeToContents
+            )
+
         self.etiqueta_contagem = QLabel("0 eventos")
         self.etiqueta_contagem.setObjectName(theme.SUBTITULO)
         self.botao_atualizar = QPushButton("Actualizar")
@@ -82,11 +117,20 @@ class AuditPage(QWidget):
 
         self.painel = PainelDeDetalhes(ACCAO)
 
+        topo_das_operacoes = QHBoxLayout()
+        topo_das_operacoes.addWidget(TituloDeSeccao("Operacoes", 0), 1)
+        topo_das_operacoes.addWidget(self.etiqueta_operacoes)
+        topo_das_operacoes.addWidget(self.botao_relatorio_da_operacao)
+        self.titulo_das_operacoes = topo_das_operacoes.itemAt(0).widget()
+
         conteudo = QVBoxLayout()
         conteudo.setContentsMargins(20, 18, 16, 18)
         conteudo.setSpacing(12)
         conteudo.addLayout(topo)
-        conteudo.addWidget(self.tabela)
+        conteudo.addLayout(topo_das_operacoes)
+        conteudo.addWidget(self.tabela_de_operacoes)
+        conteudo.addWidget(TituloDeSeccao("Eventos", 0))
+        conteudo.addWidget(self.tabela, 1)
 
         disposicao = QHBoxLayout(self)
         disposicao.setContentsMargins(0, 0, 0, 0)
@@ -95,6 +139,10 @@ class AuditPage(QWidget):
         disposicao.addWidget(self.painel)
 
         self.painel.botao_accao.clicked.connect(self.relatorio_pedido.emit)
+        self.tabela_de_operacoes.itemSelectionChanged.connect(
+            self._operacao_seleccionada
+        )
+        self.botao_relatorio_da_operacao.clicked.connect(self._pedir_relatorio)
 
     def mostrar_eventos(self, eventos: list[dict]) -> None:
         """Preenche a tabela e o resumo com os eventos registados."""
@@ -119,7 +167,9 @@ class AuditPage(QWidget):
                 self.tabela.setItem(linha, coluna, item)
         self.etiqueta_contagem.setText("%d eventos" % len(eventos))
 
-        recuperados = self._ficheiros(eventos, ACTION_RECOVER)
+        recuperados = self._ficheiros(eventos, ACTION_RECOVER) | self._ficheiros(
+            eventos, ACTION_CARVING
+        )
         verificados = self._ficheiros(eventos, ACTION_VERIFY_OK)
         falhados = self._ficheiros(eventos, ACTION_VERIFY_FAILED)
         self.painel.mostrar(
@@ -133,6 +183,44 @@ class AuditPage(QWidget):
             ],
         )
         self.painel.botao_accao.setEnabled(bool(eventos))
+
+    def mostrar_operacoes(self, operacoes: list[dict]) -> None:
+        """Preenche o historico de operacoes guardado na base de dados."""
+        self.operacoes = list(operacoes or [])
+        self.tabela_de_operacoes.setRowCount(len(self.operacoes))
+        for linha, operacao in enumerate(self.operacoes):
+            valores = (
+                operacao.get("id", ""),
+                _data_legivel(operacao.get("inicio")),
+                operacao.get("device_path") or "",
+                NOMES_DOS_METODOS.get(operacao.get("metodo"), operacao.get("metodo")),
+                operacao.get("encontrados", 0),
+                operacao.get("recuperados", 0),
+                operacao.get("nao_recuperados", 0),
+            )
+            for coluna, valor in enumerate(valores):
+                self.tabela_de_operacoes.setItem(
+                    linha, coluna, QTableWidgetItem(str(valor))
+                )
+        self.etiqueta_operacoes.setText("%d operacoes" % len(self.operacoes))
+        self.titulo_das_operacoes.definir_quantidade(len(self.operacoes))
+        self.botao_relatorio_da_operacao.setEnabled(False)
+
+    def operacao_seleccionada(self) -> dict | None:
+        linhas = self.tabela_de_operacoes.selectionModel().selectedRows()
+        if not linhas:
+            return None
+        return self.operacoes[linhas[0].row()]
+
+    def _operacao_seleccionada(self) -> None:
+        self.botao_relatorio_da_operacao.setEnabled(
+            self.operacao_seleccionada() is not None
+        )
+
+    def _pedir_relatorio(self) -> None:
+        operacao = self.operacao_seleccionada()
+        if operacao is not None:
+            self.relatorio_da_operacao_pedido.emit(int(operacao["id"]))
 
     @staticmethod
     def _ficheiros(eventos, accao) -> set:

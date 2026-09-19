@@ -44,16 +44,18 @@ src/
   carving.py            Carving por assinatura binária (JPEG, PDF, DOCX)
   integrity.py          Hash SHA-256 e verificação de integridade
   audit_log.py          Registo de auditoria / cadeia de custódia (sqlite3)
-  report.py             Relatório PDF (ReportLab)
+  operacao.py           Execução de uma operação (análise + recuperação)
+  report.py             Relatórios PDF: cadeia de custódia e operação
   gui/main_window.py    Janela única: barra lateral, painéis e orquestração
   gui/theme.py          Tema visual (claro institucional)
   gui/icons.py          Ícones SVG desenhados no próprio código
   gui/widgets.py        Componentes partilhados (cartões, banner, detalhes)
   gui/pages/login.py    Autenticação
   gui/pages/devices.py  Discos físicos e volumes lógicos
-  gui/pages/results.py  Ficheiros apagados e recuperação
-  gui/pages/carving.py  Carving por assinatura
-  gui/pages/audit.py    Cadeia de custódia e relatório
+  gui/pages/results.py  Ficheiros encontrados e recuperação
+  gui/pages/summary.py  Resultados: cartões de estatísticas e tabela final
+  gui/pages/audit.py    Histórico de operações e cadeia de custódia
+  gui/workers.py        Análise e recuperação em segundo plano
   gui/pages/accounts.py Contas de acesso (só administrador)
 tests/                  Testes unitários (mocks de pytsk3/hardware)
 tests/test_integracao.py  Teste com pytsk3 real sobre uma imagem FAT16 gerada
@@ -68,27 +70,77 @@ py -3.11 -m src.gui.main_window
 
 Executar a partir de uma consola elevada (Administrador) para acesso a disco bruto.
 
+## Fluxo de trabalho
+
+A interface segue a ordem do processo pericial, numerada na barra lateral:
+
+```
+1. Dispositivo e método  ->  2. Ficheiros encontrados  ->  3. Resultados
+```
+
+1. **Seleccionar o dispositivo** — disco físico, volume local, unidade externa
+   (pen ou disco USB) ou imagem `.dd`/`.img`.
+2. **Escolher o método** — *recuperação baseada em metadados* (lê as estruturas
+   do sistema de ficheiros e devolve nomes e caminhos originais) ou *recuperação
+   por assinaturas / File Carving* (procura cabeçalhos e rodapés nos dados em
+   bruto, sem depender do sistema de ficheiros).
+3. **A análise arranca sozinha** — não é um passo separado. Corre noutra linha
+   de execução, para a janela continuar a responder e o progresso avançar.
+4. **Escolher os ficheiros** — a tabela mostra nome, tipo/extensão, tamanho,
+   caminho original e data de modificação.
+5. **Recuperar** — a pasta de destino é pedida nesta altura e **tem de ser
+   diferente do dispositivo analisado**; a aplicação recusa e explica porquê se
+   for a mesma ou outro volume do mesmo disco físico.
+6. **Resultados** — quatro cartões de estatísticas (encontrados, seleccionados,
+   recuperados, não recuperados) e a tabela com o estado de cada ficheiro.
+7. **Relatório PDF** — gerado a partir da operação, com identificação, data e
+   hora, dispositivo, tipo e capacidade, sistema de ficheiros, método, totais,
+   lista de ficheiros processados, pasta de destino e observações ou erros.
+
+### Estado da operação
+
+O estado aparece sempre no topo, com um ponto colorido e a barra de progresso:
+
+| Estado | Cor | Significado |
+|---|---|---|
+| Aguardando | cinzento | operação ainda não iniciada |
+| Em análise | amarelo | dispositivo a ser analisado |
+| Em recuperação | amarelo | ficheiros seleccionados a serem recuperados |
+| Concluído | verde | operação terminada com sucesso |
+| Erro | vermelho | ocorreu uma falha durante a operação |
+
+### Histórico das operações
+
+Cada operação fica registada em SQLite (`frda_audit.db`), nas tabelas
+`operacoes` e `operacao_ficheiros`: dispositivo, tipo e capacidade, sistema de
+ficheiros, método, totais, pasta de destino, observações e a lista de ficheiros
+processados com o respectivo estado e SHA-256. **Os ficheiros recuperados não
+são guardados na base de dados** — ficam apenas na pasta de destino escolhida. O
+painel *Cadeia de custódia* lista o histórico e permite voltar a gerar o
+relatório PDF de qualquer operação anterior.
+
 ## Interface
 
 Aplicação de desktop numa **janela única**: a autenticação, os dispositivos, os
-ficheiros apagados, o carving, a cadeia de custódia e as contas são painéis que se
+ficheiros encontrados, os resultados, o histórico e as contas são painéis que se
 substituem no mesmo espaço — não há diálogos nem janelas secundárias (as únicas
 excepções são os selectores de pasta e de ficheiro do próprio Windows).
 
 ```
-+--------------------------------------------------------------+
-| FRDA                             admin • administrador  [Sair]|
-+----------------------+---------------------------------------+
-| Recuperação de dados | Escolha um local para iniciar a rec.  |
-|  > Dispositivos      | Discos físicos (2)                    |
-|    Ficheiros apagados| [#] Disco 0    [#] Disco 1     +-----+|
-|    Carving           | Volumes locais (2)             |Deta-||
-| Ferramentas          | [#] C: ####--- [#] D: ##-----  |lhes ||
-|    Cadeia de custódia| Unidades externas (1)          |[Pro-||
-|    Contas de acesso  | [#] SD Card (G:)  Acesso rápido|curar]||
-+----------------------+---------------------------------------+
-| mensagem                    Sem privilégios de Administrador  |
-+--------------------------------------------------------------+
++---------------------------------------------------------------+
+| FRDA                              admin • administrador  [Sair]|
++----------------------+----------------------------------------+
+|                      | (o) Em análise   \.\G: • metadados    |
+| Recuperação de dados | [=========------------------]  38%     |
+|  > 1. Dispositivo    | Discos físicos (2)                     |
+|    2. Ficheiros      | [#] Disco 0     [#] Disco 1     +-----+|
+|    3. Resultados     | Unidades externas (1)           |Deta-||
+| Ferramentas          | [#] PEN FORENSE (G:) ###-----   |lhes ||
+|    Cadeia de custódia| Método de recuperação (2)       |[Ini-||
+|    Contas de acesso  | [*] Metadados   [ ] Assinaturas |ciar]||
++----------------------+----------------------------------------+
+| mensagem                     Sem privilégios de Administrador  |
++---------------------------------------------------------------+
 ```
 
 Barra lateral com as secções, tabela central com os dados e painel de detalhes à
@@ -131,13 +183,13 @@ distingue "não há nada apagado" de "não consegui ler este disco".
 
 ## Contas e perfis de acesso
 
-| Ação                  | administrador | operador |
-|-----------------------|:-------------:|:--------:|
-| Escanear              | sim           | sim      |
-| Recuperar ficheiros   | sim           | sim      |
-| Carving por assinatura| sim           | sim      |
-| Gerar relatório PDF   | sim           | não      |
-| Criar contas          | sim           | não      |
+| Ação                          | administrador | operador |
+|-------------------------------|:-------------:|:--------:|
+| Analisar (metadados e carving)| sim           | sim      |
+| Recuperar ficheiros           | sim           | sim      |
+| Relatório PDF da operação     | sim           | sim      |
+| Histórico e cadeia de custódia| sim           | não      |
+| Criar contas                  | sim           | não      |
 
 O operador não vê sequer as entradas de relatório e de contas na barra lateral
 (a secção "Ferramentas" desaparece por completo). Podem criar-se mais
@@ -161,7 +213,7 @@ py -3.11 -m unittest discover -s tests -t . -v      # suite completa
 py -3.11 -m unittest tests.test_carving -v          # um módulo isolado
 ```
 
-238 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
+295 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
 sintéticas criadas em ficheiros temporários — nenhum dispositivo físico é tocado. Os
 testes da GUI correm com Qt em modo *offscreen* e ficam em `skipped` se o PySide6 não
 estiver instalado; os de `report.py` ficam em `skipped` sem o ReportLab.
@@ -203,15 +255,14 @@ Os dois hashes SHA-256 devem coincidir.
    Sem elevação a barra de estado mostra o aviso e o acesso a disco bruto falha.
 4. Autenticar-se com `admin` / `admin123` (o perfil `operador` chega para os passos
    5 e 6, mas não gera o relatório do passo 7).
-5. No painel **Dispositivos**, escolher o disco ou o volume na árvore e carregar em
-   **Procurar dados apagados**: a aplicação passa ao painel **Ficheiros apagados**
-   com nome, caminho original, tamanho e data de modificação.
-6. Seleccionar as linhas e carregar em **Recuperar seleccionados**, escolhendo uma
-   pasta **noutro disco**. Regra forense: nunca gravar no dispositivo em análise.
-7. Em **Cadeia de custódia**, carregar em **Gerar relatório PDF** para exportar o
-   relatório com a tabela de eventos e o resumo (ficheiros recuperados e verificados
-   com sucesso). O painel **Carving por assinatura** faz a varredura binária do mesmo
-   dispositivo, sem depender do sistema de ficheiros.
+5. Em **1. Dispositivo e método**, escolher a pen e o método, e carregar em
+   **Iniciar análise**. A análise arranca de imediato, com o estado a amarelo e a
+   barra de progresso a avançar.
+6. Em **2. Ficheiros encontrados**, seleccionar as linhas e carregar em
+   **Recuperar seleccionados**, escolhendo uma pasta **noutro disco**. Regra
+   forense: nunca gravar no dispositivo em análise — a aplicação recusa-o.
+7. Em **3. Resultados**, confirmar os cartões de estatísticas e a tabela, e
+   carregar em **Gerar relatório PDF**.
 8. Confirmar a integridade comparando o SHA-256 registado na auditoria com o do
    ficheiro recuperado:
 

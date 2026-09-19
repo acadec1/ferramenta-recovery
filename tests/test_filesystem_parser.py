@@ -391,6 +391,22 @@ class FilesystemParserTest(unittest.TestCase):
         self.assertEqual(diagnostico["particoes"], 1)
         self.assertEqual(diagnostico["sistemas_de_ficheiros"], 0)
 
+    def test_progresso_do_varrimento(self):
+        fake = build_fake_pytsk3(parts=[FakePart(0, 1000)], registos={},
+                                 last_inum=10_000)
+        recebidos = []
+        with mock.patch.object(filesystem_parser, "MAX_REGISTOS", 5_000), \
+             mock.patch.object(filesystem_parser, "PASSO_DO_PROGRESSO", 1_000), \
+             mock.patch.object(filesystem_parser, "pytsk3", fake):
+            filesystem_parser.scan_deleted_entries(
+                r"\\.\PhysicalDrive0", None,
+                lambda feitos, total: recebidos.append((feitos, total)),
+            )
+
+        self.assertEqual(len(recebidos), 5)
+        self.assertEqual(recebidos[0], (1_000, 5_001))
+        self.assertEqual(recebidos[-1], (5_000, 5_001))
+
     def test_sem_pytsk3_instalado(self):
         with mock.patch.object(filesystem_parser, "pytsk3", None):
             with self.assertRaises(RuntimeError):

@@ -157,5 +157,83 @@ class CarvingTest(unittest.TestCase):
         )
 
 
+class CarvingEmDuasFasesTest(unittest.TestCase):
+    """Localizar e extrair sao passos separados: o destino so e preciso no fim."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def _device(self, builder):
+        return builder.write(os.path.join(self.tmp, "disco.dd"))
+
+    def test_localiza_sem_escrever_nada(self):
+        builder = ImageBuilder().gap().add(jpeg()).gap(2048).add(jpeg(1500))
+        candidatos = carving.find_by_signature(self._device(builder), "jpeg")
+
+        self.assertEqual(len(candidatos), 2)
+        self.assertEqual(candidatos[0]["offset"], builder.offsets[0])
+        self.assertEqual(candidatos[0]["size"], len(jpeg()))
+        self.assertEqual(candidatos[0]["type"], "jpeg")
+        self.assertEqual(candidatos[0]["extension"], ".jpg")
+        self.assertIn("offset_%d" % builder.offsets[0], candidatos[0]["name"])
+        # nada foi escrito em disco nesta fase
+        self.assertEqual(os.listdir(self.tmp), ["disco.dd"])
+
+    def test_extrai_um_candidato_escolhido(self):
+        builder = ImageBuilder().gap().add(jpeg()).gap(2048).add(pdf())
+        device = self._device(builder)
+        candidatos = carving.find_by_signature(device, "jpeg")
+
+        destino = carving.extract_candidate(
+            device, candidatos[0], os.path.join(self.tmp, "saida")
+        )
+
+        with open(destino, "rb") as ficheiro:
+            self.assertEqual(ficheiro.read(), jpeg())
+
+    def test_extrair_de_posicao_invalida(self):
+        builder = ImageBuilder().gap().add(jpeg())
+        device = self._device(builder)
+        candidato = {"name": "x.jpg", "offset": 10 ** 9, "size": 100}
+        with self.assertRaises(ValueError):
+            carving.extract_candidate(device, candidato, os.path.join(self.tmp, "s"))
+
+    def test_progresso_e_comunicado(self):
+        builder = ImageBuilder().gap().add(jpeg()).gap(5000)
+        device = self._device(builder)
+        avisos = []
+
+        with mock.patch.object(carving, "CHUNK_SIZE", 1024):
+            carving.find_by_signature(
+                device, "jpeg", lambda lidos, _total: avisos.append(lidos)
+            )
+
+        self.assertGreater(len(avisos), 1)
+        self.assertEqual(avisos[-1], os.path.getsize(device))
+        self.assertEqual(avisos, sorted(avisos))  # progresso so avanca
+
+    def test_progresso_traz_o_total(self):
+        builder = ImageBuilder().gap().add(jpeg())
+        device = self._device(builder)
+        recebidos = []
+
+        carving.find_by_signature(
+            device, "jpeg", lambda lidos, total: recebidos.append((lidos, total))
+        )
+
+        self.assertTrue(recebidos)
+        self.assertEqual(recebidos[-1][1], os.path.getsize(device))
+
+    def test_carve_by_signature_continua_a_funcionar(self):
+        builder = ImageBuilder().gap().add(jpeg())
+        extraidos = carving.carve_by_signature(
+            self._device(builder), "jpeg", os.path.join(self.tmp, "saida")
+        )
+        self.assertEqual(len(extraidos), 1)
+        with open(extraidos[0], "rb") as ficheiro:
+            self.assertEqual(ficheiro.read(), jpeg())
+
+
 if __name__ == "__main__":
     unittest.main()

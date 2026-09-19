@@ -13,10 +13,12 @@ from PySide6.QtWidgets import (
 )
 
 from src import device_reader
+from src.audit_log import METODO_CARVING, METODO_METADADOS, NOMES_DOS_METODOS
 from src.gui import icons, theme
 from src.gui.widgets import (
     CabecalhoDePainel,
     CartaoDeDispositivo,
+    CartaoDeMetodo,
     PainelDeDetalhes,
     TituloDeSeccao,
     formatar_tamanho,
@@ -24,7 +26,19 @@ from src.gui.widgets import (
 
 TITULO = "Escolha um local para iniciar a recuperacao"
 DESCRICAO = "Seleccione o disco, o volume ou a imagem a analisar."
-ACCAO = "Procurar dados apagados"
+ACCAO = "Iniciar analise"
+SECCAO_METODO = "Metodo de recuperacao"
+
+METODOS = (
+    (METODO_METADADOS, "Recuperacao baseada em metadados",
+     "Usa as estruturas e os metadados do sistema de ficheiros para localizar "
+     "o que foi apagado. Recupera nomes e caminhos originais.",
+     "auditoria", "azul"),
+    (METODO_CARVING, "Recuperacao por assinaturas (File Carving)",
+     "Procura assinaturas de JPEG, PDF e DOCX nos dados em bruto. Funciona "
+     "mesmo sem sistema de ficheiros, mas perde os nomes originais.",
+     "carving", "roxo"),
+)
 COLUNAS_DA_GRELHA = 2
 
 SECCAO_DISCOS = "Discos fisicos"
@@ -38,7 +52,7 @@ TIPOS_EXTERNOS = ("Removivel", "CD-ROM")
 class DevicesPage(QWidget):
     """Cartoes de discos e volumes, com painel de detalhes e accao de varrimento."""
 
-    varrimento_pedido = Signal(str)
+    varrimento_pedido = Signal(str, str)  # dispositivo, metodo
     imagem_pedida = Signal()
 
     def __init__(self, parent=None):
@@ -46,6 +60,7 @@ class DevicesPage(QWidget):
         self.cartoes: list[CartaoDeDispositivo] = []
         self.seleccionado: dict | None = None
         self.imagem: str | None = None
+        self.metodo = METODO_METADADOS
 
         self.cabecalho = CabecalhoDePainel(TITULO, DESCRICAO)
         self.botao_atualizar = QPushButton("  Actualizar")
@@ -70,11 +85,23 @@ class DevicesPage(QWidget):
 
         self.painel = PainelDeDetalhes(ACCAO)
 
+        self.cartoes_de_metodo: list[CartaoDeMetodo] = []
+        metodos = QHBoxLayout()
+        metodos.setContentsMargins(0, 0, 8, 0)
+        metodos.setSpacing(12)
+        for metodo, titulo, descricao, nome_do_icone, cor in METODOS:
+            cartao = CartaoDeMetodo(metodo, titulo, descricao, nome_do_icone, cor)
+            cartao.escolhido.connect(self.definir_metodo)
+            self.cartoes_de_metodo.append(cartao)
+            metodos.addWidget(cartao, 1)
+
         conteudo = QVBoxLayout()
         conteudo.setContentsMargins(20, 18, 12, 18)
         conteudo.setSpacing(14)
         conteudo.addLayout(topo)
         conteudo.addWidget(self.area, 1)
+        conteudo.addWidget(TituloDeSeccao(SECCAO_METODO, len(METODOS)))
+        conteudo.addLayout(metodos)
 
         disposicao = QHBoxLayout(self)
         disposicao.setContentsMargins(0, 0, 0, 0)
@@ -84,6 +111,7 @@ class DevicesPage(QWidget):
 
         self.botao_atualizar.clicked.connect(self.carregar)
         self.painel.botao_accao.clicked.connect(self._pedir_varrimento)
+        self.definir_metodo(METODO_METADADOS)
 
     # ------------------------------------------------------------------ dados
 
@@ -203,6 +231,23 @@ class DevicesPage(QWidget):
                 self._seleccionar(cartao.dados)
                 break
 
+    def informacao_do_dispositivo(self) -> dict:
+        """Tipo, capacidade e sistema de ficheiros do que esta seleccionado."""
+        if self.seleccionado is None:
+            return {}
+        tipo = self.seleccionado["tipo"]
+        dados = self.seleccionado["dados"]
+        if tipo == "disco":
+            return {"device_type": "Disco fisico",
+                    "device_size": dados.get("size_bytes"),
+                    "filesystem": None}
+        if tipo == "volume":
+            return {"device_type": dados.get("drive_type"),
+                    "device_size": dados.get("size_bytes"),
+                    "filesystem": dados.get("filesystem")}
+        return {"device_type": "Imagem de disco", "device_size": None,
+                "filesystem": None}
+
     def seleccao(self) -> dict | None:
         return self.seleccionado
 
@@ -225,6 +270,7 @@ class DevicesPage(QWidget):
                 "Disco fisico %d" % dados["index"],
                 "Dispositivo • %s" % formatar_tamanho(dados["size_bytes"]),
                 [
+                    ("Metodo:", NOMES_DOS_METODOS[self.metodo]),
                     ("Tipo:", "Disco fisico"),
                     ("Caminho:", dados["path"]),
                     ("Capacidade:", formatar_tamanho(dados["size_bytes"])),
@@ -236,6 +282,7 @@ class DevicesPage(QWidget):
                 "%s (%s:)" % (dados["label"] or "Volume local", dados["letter"]),
                 "Volume logico • %s" % formatar_tamanho(dados["size_bytes"]),
                 [
+                    ("Metodo:", NOMES_DOS_METODOS[self.metodo]),
                     ("Tipo:", "Volume logico"),
                     ("Sistema de ficheiros:", dados["filesystem"]),
                     ("Ligacao:", dados["drive_type"]),
@@ -252,10 +299,21 @@ class DevicesPage(QWidget):
             self.painel.mostrar(
                 "Imagem de disco",
                 "Ficheiro de imagem",
-                [("Tipo:", "Imagem de disco"), ("Caminho:", dados.get("path") or "-")],
+                [
+                    ("Metodo:", NOMES_DOS_METODOS[self.metodo]),
+                    ("Tipo:", "Imagem de disco"),
+                    ("Caminho:", dados.get("path") or "-"),
+                ],
             )
+
+    def definir_metodo(self, metodo: str) -> None:
+        """Escolhe o metodo com que a analise vai ser feita."""
+        self.metodo = metodo
+        for cartao in self.cartoes_de_metodo:
+            cartao.definir_seleccionado(cartao.metodo == metodo)
+        self.mostrar_detalhes()
 
     def _pedir_varrimento(self) -> None:
         device_path = self.dispositivo_selecionado()
         if device_path:
-            self.varrimento_pedido.emit(device_path)
+            self.varrimento_pedido.emit(device_path, self.metodo)

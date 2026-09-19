@@ -22,6 +22,8 @@ DEFAULT_SECTOR_SIZE = 512
 # FAT) percorridos por particao. Limita o tempo do varrimento em discos grandes.
 MAX_REGISTOS = 500_000
 
+PASSO_DO_PROGRESSO = 2000  # registos entre cada aviso de progresso
+
 CAMINHO_DOS_ORFAOS = "/$OrphanFiles"
 SEM_CAMINHO = "(sem entrada de directorio)"
 
@@ -253,7 +255,15 @@ def _orfaos(fs, partition, entries, inodes) -> None:
         inodes.add(int(meta.addr))
 
 
-def _registos_nao_alocados(fs, partition, entries, inodes) -> int:
+def _total_estimado(fs) -> int:
+    """Quantos registos vao ser percorridos neste sistema de ficheiros."""
+    primeiro = int(getattr(fs.info, "first_inum", 0) or 0)
+    ultimo = int(getattr(fs.info, "last_inum", 0) or 0)
+    return max(0, min(ultimo, primeiro + MAX_REGISTOS) - primeiro + 1)
+
+
+def _registos_nao_alocados(fs, partition, entries, inodes, progresso=None,
+                           ja_feitos=0, total=0) -> int:
     """Percorre os registos de metadados nao alocados (a MFT, no NTFS).
 
     E aqui que aparecem os ficheiros apagados em NTFS: ao eliminar, a entrada
@@ -269,6 +279,8 @@ def _registos_nao_alocados(fs, partition, entries, inodes) -> int:
     examinados = 0
     for inode in range(primeiro, ultimo + 1):
         examinados += 1
+        if progresso is not None and examinados % PASSO_DO_PROGRESSO == 0:
+            progresso(ja_feitos + examinados, total)
         if inode in inodes:
             continue
         try:
@@ -320,8 +332,8 @@ def _walk(fs, directory, parent_path, partition, entries, visited, depth,
                   inodes)
 
 
-def scan_deleted_entries(device_path: str,
-                         diagnostico: dict | None = None) -> list[dict]:
+def scan_deleted_entries(device_path: str, diagnostico: dict | None = None,
+                         progresso=None) -> list[dict]:
     """Lista as entradas apagadas (nao alocadas) do dispositivo indicado.
 
     Combina tres fontes, por esta ordem: as entradas ainda presentes nas
@@ -335,7 +347,8 @@ def scan_deleted_entries(device_path: str,
     disponiveis. Passando um dicionario em ``diagnostico``, este fica com o
     numero de particoes vistas, de sistemas de ficheiros abertos e de registos
     examinados — util para distinguir "nao ha nada apagado" de "nao foi
-    possivel ler o sistema de ficheiros".
+    possivel ler o sistema de ficheiros". ``progresso`` e chamado com
+    ``(registos_feitos, total_estimado)`` ao longo do varrimento.
     """
     tsk = _require_pytsk3()
     image = _abrir_imagem(device_path)
@@ -365,7 +378,8 @@ def scan_deleted_entries(device_path: str,
             _walk(fs, root, "", partition, entries, set(), 0, inodes)
         _orfaos(fs, partition, entries, inodes)
         resumo["registos_examinados"] += _registos_nao_alocados(
-            fs, partition, entries, inodes
+            fs, partition, entries, inodes, progresso,
+            resumo["registos_examinados"], _total_estimado(fs),
         )
 
     if diagnostico is not None:

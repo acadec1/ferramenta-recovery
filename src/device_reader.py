@@ -21,6 +21,7 @@ GENERIC_READ = 0x80000000
 FILE_SHARE_READ = 0x00000001
 FILE_SHARE_WRITE = 0x00000002
 OPEN_EXISTING = 3
+DEFAULT_SECTOR_SIZE = 512
 IOCTL_DISK_GET_LENGTH_INFO = 0x0007405C
 IOCTL_DISK_GET_DRIVE_GEOMETRY_EX = 0x000700A0
 IOCTL_STORAGE_GET_DEVICE_NUMBER = 0x002D1080
@@ -244,6 +245,42 @@ def list_logical_volumes() -> list[dict]:
             }
         )
     return volumes
+
+
+def read_aligned(device, offset: int, length: int,
+                 sector_size: int = DEFAULT_SECTOR_SIZE) -> bytes:
+    """Le ``length`` bytes de ``device`` a partir de ``offset``.
+
+    O Windows recusa leituras de disco em bruto que nao comecem numa fronteira
+    de sector e nao tenham um tamanho multiplo do sector, por isso a leitura e
+    alargada para as fronteiras e o excedente e descartado no fim.
+    """
+    if length <= 0:
+        return b""
+    inicio_alinhado = offset - (offset % sector_size)
+    avanco = offset - inicio_alinhado
+    total = avanco + length
+    if total % sector_size:
+        total += sector_size - (total % sector_size)
+
+    device.seek(inicio_alinhado)
+    buffer = bytearray()
+    while len(buffer) < total:
+        bloco = device.read(total - len(buffer))
+        if not bloco:
+            break  # fim do dispositivo
+        buffer.extend(bloco)
+    return bytes(buffer[avanco:avanco + length])
+
+
+def device_size(device) -> int | None:
+    """Tamanho de um ficheiro ou dispositivo ja aberto, se for possivel saber."""
+    try:
+        posicao = device.seek(0, os.SEEK_END)
+        device.seek(0)
+        return int(posicao) if posicao else None
+    except OSError:
+        return None
 
 
 def is_admin() -> bool:

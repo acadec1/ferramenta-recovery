@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import os
 
+from src.device_reader import device_size, read_aligned
+
 CHUNK_SIZE = 1024 * 1024
 OVERLAP = 64  # >= maior assinatura, para apanhar padroes entre blocos
 
@@ -79,27 +81,32 @@ def _read_chunk(device, size: int) -> bytes:
     return bytes(buffer)
 
 
-def _write_candidate(data: bytes, signature: dict, start: int, index: int,
-                     output_dir: str) -> str | None:
-    """Grava um candidato valido e devolve o caminho, ou None se for rejeitado."""
+def _candidato_valido(data: bytes, signature: dict) -> bool:
+    """Um candidato so conta se tiver tamanho plausivel e o marcador do tipo."""
     if not signature["min_size"] <= len(data) <= signature["max_size"]:
-        return None
+        return False
     if signature["marker"] and signature["marker"] not in data:
-        return None
-    filename = "%s_%05d_offset_%d%s" % (
-        signature["type"], index, start, signature["extension"],
+        return False
+    return True
+
+
+def _nome_do_candidato(signature: dict, indice: int, inicio: int) -> str:
+    return "%s_%05d_offset_%d%s" % (
+        signature["type"], indice, inicio, signature["extension"],
     )
-    path = os.path.join(output_dir, filename)
-    with open(path, "wb") as output:
-        output.write(data)
-    return path
 
 
-def carve_by_signature(device_path: str, file_type: str, output_dir: str) -> list[str]:
-    """Varre ``device_path`` por ficheiros do tipo indicado e grava-os.
+def find_by_signature(device_path: str, file_type: str,
+                      progresso=None) -> list[dict]:
+    """Localiza (sem extrair) os ficheiros do tipo indicado em ``device_path``.
 
-    Devolve a lista de caminhos dos ficheiros extraidos, por ordem de
-    aparecimento no dispositivo.
+    Percorre o dispositivo do principio ao fim a procura do par
+    cabecalho/rodape do tipo escolhido. Devolve, por ordem de aparecimento, um
+    dicionario por candidato com ``name``, ``offset``, ``size``, ``type`` e
+    ``extension`` — o conteudo so e lido do disco quando se extrai, o que
+    permite escolher a pasta de destino depois da analise.
+
+    ``progresso`` e chamado com ``(bytes_lidos, total_ou_None)`` a cada bloco.
     """
     signature = _signature(file_type)
     header = signature["header"]
@@ -107,9 +114,7 @@ def carve_by_signature(device_path: str, file_type: str, output_dir: str) -> lis
     trailer = signature["trailer"]
     max_size = signature["max_size"]
 
-    os.makedirs(output_dir, exist_ok=True)
-    recovered: list[str] = []
-
+    candidatos: list[dict] = []
     carry = b""
     carry_offset = 0
     in_file = False
@@ -117,9 +122,14 @@ def carve_by_signature(device_path: str, file_type: str, output_dir: str) -> lis
     file_start = 0
 
     with open(device_path, "rb", buffering=0) as device:
+        total = device_size(device)
+        lidos = 0
         while True:
             chunk = _read_chunk(device, CHUNK_SIZE)
             final = len(chunk) < CHUNK_SIZE
+            lidos += len(chunk)
+            if progresso is not None:
+                progresso(lidos, total)
             window = carry + chunk
             base = carry_offset
             if not window:
@@ -153,11 +163,18 @@ def carve_by_signature(device_path: str, file_type: str, output_dir: str) -> lis
 
                 end = found + len(footer) + trailer
                 buffer.extend(window[position:end])
-                path = _write_candidate(
-                    bytes(buffer), signature, file_start, len(recovered) + 1, output_dir
-                )
-                if path:
-                    recovered.append(path)
+                if _candidato_valido(bytes(buffer), signature):
+                    candidatos.append(
+                        {
+                            "name": _nome_do_candidato(
+                                signature, len(candidatos) + 1, file_start
+                            ),
+                            "offset": file_start,
+                            "size": len(buffer),
+                            "type": signature["type"],
+                            "extension": signature["extension"],
+                        }
+                    )
                 in_file = False
                 buffer = bytearray()
                 position = end
@@ -167,4 +184,34 @@ def carve_by_signature(device_path: str, file_type: str, output_dir: str) -> lis
             if final:
                 break
 
-    return recovered
+    return candidatos
+
+
+def extract_candidate(device_path: str, candidato: dict, output_dir: str) -> str:
+    """Le do dispositivo o candidato localizado e grava-o em ``output_dir``."""
+    os.makedirs(output_dir, exist_ok=True)
+    destino = os.path.join(output_dir, candidato["name"])
+    with open(device_path, "rb", buffering=0) as device:
+        dados = read_aligned(device, int(candidato["offset"]), int(candidato["size"]))
+    if not dados:
+        raise ValueError(
+            "nao foi possivel ler o candidato na posicao %s" % candidato.get("offset")
+        )
+    with open(destino, "wb") as saida:
+        saida.write(dados)
+    return destino
+
+
+def carve_by_signature(device_path: str, file_type: str, output_dir: str,
+                       progresso=None) -> list[str]:
+    """Varre ``device_path`` por ficheiros do tipo indicado e grava-os.
+
+    E a juncao das duas fases: localizar os candidatos e extrair todos.
+    Devolve a lista de caminhos dos ficheiros extraidos, por ordem de
+    aparecimento no dispositivo.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    extraidos = []
+    for candidato in find_by_signature(device_path, file_type, progresso):
+        extraidos.append(extract_candidate(device_path, candidato, output_dir))
+    return extraidos

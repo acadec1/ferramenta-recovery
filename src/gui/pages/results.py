@@ -15,14 +15,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.audit_log import METODO_CARVING
+from src.operacao import tipo_do_ficheiro
 from src.gui import theme
 from src.gui.widgets import CabecalhoDePainel, PainelDeDetalhes, formatar_tamanho
 
-TITULO = "Ficheiros apagados"
-DESCRICAO = "Seleccione as entradas a reconstruir e escolha a pasta de destino."
-COLUNAS = ("Nome", "Caminho original", "Tamanho", "Data de modificacao")
+TITULO = "Ficheiros encontrados"
+DESCRICAO = (
+    "Seleccione os ficheiros a recuperar. A pasta de destino e pedida a seguir "
+    "e tem de ser diferente do dispositivo analisado."
+)
+COLUNAS = ("Nome", "Tipo", "Tamanho", "Caminho original", "Data de modificacao")
 ACCAO = "Recuperar seleccionados"
-SEM_VARRIMENTO = "Ainda nao foi feito nenhum varrimento."
+SEM_VARRIMENTO = "Ainda nao foi feita nenhuma analise."
 
 
 class ResultsPage(QWidget):
@@ -55,9 +60,10 @@ class ResultsPage(QWidget):
         cabecalho_tabela = self.tabela.horizontalHeader()
         cabecalho_tabela.setStretchLastSection(False)
         cabecalho_tabela.setSectionResizeMode(0, QHeaderView.Stretch)
-        cabecalho_tabela.setSectionResizeMode(1, QHeaderView.Stretch)
+        cabecalho_tabela.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         cabecalho_tabela.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        cabecalho_tabela.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        cabecalho_tabela.setSectionResizeMode(3, QHeaderView.Stretch)
+        cabecalho_tabela.setSectionResizeMode(4, QHeaderView.ResizeToContents)
 
         self.painel = PainelDeDetalhes(ACCAO)
 
@@ -85,21 +91,23 @@ class ResultsPage(QWidget):
         self.painel.limpar()
         self.tabela.setRowCount(len(entradas))
         for linha, entrada in enumerate(entradas):
+            nome = entrada.get("nome") or entrada.get("name", "")
             valores = (
-                entrada.get("name", ""),
-                entrada.get("path", ""),
-                formatar_tamanho(entrada.get("size", 0)),
+                nome,
+                entrada.get("tipo") or tipo_do_ficheiro(nome),
+                formatar_tamanho(entrada.get("tamanho") or entrada.get("size", 0)),
+                entrada.get("path") or "-",
                 entrada.get("mtime_iso") or "-",
             )
             for coluna, valor in enumerate(valores):
                 item = QTableWidgetItem(valor)
                 if coluna == 0:
                     item.setData(Qt.UserRole, entrada)
-                if coluna in (0, 1) and entrada.get("path"):
+                if coluna in (0, 3) and entrada.get("path"):
                     item.setToolTip(entrada["path"])
                 self.tabela.setItem(linha, coluna, item)
         self.etiqueta_contagem.setText(
-            "%d entradas apagadas%s"
+            "%d ficheiros encontrados%s"
             % (len(entradas), (" em %s" % device_path) if device_path else "")
         )
         self.botao_selecionar_tudo.setEnabled(bool(entradas))
@@ -120,7 +128,10 @@ class ResultsPage(QWidget):
             self.painel.limpar()
             return
         if len(entradas) > 1:
-            total = sum(entrada.get("size", 0) or 0 for entrada in entradas)
+            total = sum(
+                (entrada.get("tamanho") or entrada.get("size", 0) or 0)
+                for entrada in entradas
+            )
             self.painel.mostrar(
                 "%d entradas seleccionadas" % len(entradas),
                 "Total • %s" % formatar_tamanho(total),
@@ -130,18 +141,28 @@ class ResultsPage(QWidget):
 
         entrada = entradas[0]
         clusters = sum(run.get("count", 0) for run in entrada.get("runs") or [])
-        self.painel.mostrar(
-            entrada.get("name", "?"),
-            "Entrada apagada • %s" % formatar_tamanho(entrada.get("size", 0)),
-            [
-                ("Caminho:", entrada.get("path", "-")),
-                ("Tamanho:", formatar_tamanho(entrada.get("size", 0))),
-                ("Modificado:", entrada.get("mtime_iso") or "-"),
-                ("Criado:", entrada.get("crtime_iso") or "-"),
+        tamanho = entrada.get("tamanho") or entrada.get("size", 0)
+        nome = entrada.get("nome") or entrada.get("name", "?")
+        campos = [
+            ("Tipo:", entrada.get("tipo") or tipo_do_ficheiro(nome)),
+            ("Tamanho:", formatar_tamanho(tamanho)),
+            ("Caminho:", entrada.get("path") or "-"),
+            ("Modificado:", entrada.get("mtime_iso") or "-"),
+        ]
+        if entrada.get("metodo") == METODO_CARVING:
+            campos += [
+                ("Encontrado por:", "assinatura binaria"),
+                ("Posicao no disco:", entrada.get("offset", "-")),
+            ]
+        else:
+            campos += [
+                ("Encontrado por:", "metadados"),
                 ("Sistema de ficheiros:", entrada.get("fs_type", "-")),
                 ("Clusters:", clusters or "-"),
                 ("Dados residentes:", "sim" if entrada.get("resident") else "nao"),
-            ],
+            ]
+        self.painel.mostrar(
+            nome, "Ficheiro encontrado • %s" % formatar_tamanho(tamanho), campos
         )
 
     def _pedir_recuperacao(self) -> None:

@@ -29,6 +29,8 @@ CORES = {
     "roxo_claro": "#efe8ff",
     "seleccao": "#e4eeff",
     "barra_fundo": "#e6eaf1",
+    "amarelo": "#e0a106",
+    "amarelo_escuro": "#8a6106",
 }
 
 # Nomes de objecto usados pelos paineis para se ligarem ao tema.
@@ -50,6 +52,12 @@ BARRA_CAPACIDADE = "barraCapacidade"
 NOME_DO_CARTAO = "nomeCartao"
 DETALHE_DO_CARTAO = "detalheCartao"
 MARCA = "marcaAplicacao"
+PONTO_DE_ESTADO = "pontoDeEstado"
+ESTADO_DA_OPERACAO = "estadoDaOperacao"
+BARRA_DE_PROGRESSO = "barraDeProgresso"
+CARTAO_DE_ESTATISTICA = "cartaoDeEstatistica"
+VALOR_DA_ESTATISTICA = "valorDaEstatistica"
+ESCOLHA_DE_METODO = "escolhaDeMetodo"
 PAGINA_LOGIN = "paginaLogin"
 ROTULO_CAMPO = "rotuloCampo"
 VALOR_CAMPO = "valorCampo"
@@ -195,6 +203,86 @@ QLabel#{marca} {{
     font-size: 15pt;
     font-weight: bold;
     color: {texto};
+}}
+
+/* --------------------------------------------------- estado da operacao */
+QLabel#{ponto_de_estado} {{
+    border-radius: 6px;
+    background-color: {texto_suave};
+}}
+QLabel#{ponto_de_estado}[estado="analise"],
+QLabel#{ponto_de_estado}[estado="recuperacao"] {{
+    background-color: {amarelo};
+}}
+QLabel#{ponto_de_estado}[estado="concluido"] {{
+    background-color: {sucesso};
+}}
+QLabel#{ponto_de_estado}[estado="erro"] {{
+    background-color: {erro};
+}}
+QLabel#{estado_da_operacao} {{
+    font-weight: bold;
+    color: {texto_suave};
+}}
+QLabel#{estado_da_operacao}[estado="analise"],
+QLabel#{estado_da_operacao}[estado="recuperacao"] {{
+    color: {amarelo_escuro};
+}}
+QLabel#{estado_da_operacao}[estado="concluido"] {{
+    color: {sucesso};
+}}
+QLabel#{estado_da_operacao}[estado="erro"] {{
+    color: {erro};
+}}
+QProgressBar#{barra_de_progresso} {{
+    background-color: {barra_fundo};
+    border: 0;
+    border-radius: 6px;
+    min-height: 14px;
+    max-height: 14px;
+    text-align: center;
+    font-size: 8pt;
+    color: {texto};
+}}
+QProgressBar#{barra_de_progresso}::chunk {{
+    background-color: {primaria};
+    border-radius: 6px;
+}}
+
+/* ------------------------------------------------- cartoes de estatistica */
+QFrame#{cartao_de_estatistica} {{
+    background-color: {superficie};
+    border: 1px solid {contorno};
+    border-radius: 10px;
+}}
+QFrame#{cartao_de_estatistica} QLabel {{
+    background-color: transparent;
+}}
+QLabel#{valor_da_estatistica} {{
+    font-size: 21pt;
+    font-weight: bold;
+    color: {texto};
+}}
+QLabel#{valor_da_estatistica}[cor="azul"] {{ color: {primaria}; }}
+QLabel#{valor_da_estatistica}[cor="verde"] {{ color: {sucesso}; }}
+QLabel#{valor_da_estatistica}[cor="vermelho"] {{ color: {erro}; }}
+QLabel#{valor_da_estatistica}[cor="laranja"] {{ color: {aviso}; }}
+
+/* ------------------------------------------------------ escolha do metodo */
+QFrame#{escolha_de_metodo} {{
+    background-color: {superficie};
+    border: 1px solid {contorno};
+    border-radius: 10px;
+}}
+QFrame#{escolha_de_metodo}:hover {{
+    border-color: {primaria};
+}}
+QFrame#{escolha_de_metodo}[seleccionado="true"] {{
+    border: 2px solid {primaria};
+    background-color: {primaria_clara};
+}}
+QFrame#{escolha_de_metodo} QLabel {{
+    background-color: transparent;
 }}
 
 /* ----------------------------------------------------------------- avisos */
@@ -356,6 +444,12 @@ QStatusBar::item {{
     nome_do_cartao=NOME_DO_CARTAO,
     detalhe_do_cartao=DETALHE_DO_CARTAO,
     marca=MARCA,
+    ponto_de_estado=PONTO_DE_ESTADO,
+    estado_da_operacao=ESTADO_DA_OPERACAO,
+    barra_de_progresso=BARRA_DE_PROGRESSO,
+    cartao_de_estatistica=CARTAO_DE_ESTATISTICA,
+    valor_da_estatistica=VALOR_DA_ESTATISTICA,
+    escolha_de_metodo=ESCOLHA_DE_METODO,
     botao_primario=BOTAO_PRIMARIO,
     botao_secundario=BOTAO_SECUNDARIO,
     **CORES,

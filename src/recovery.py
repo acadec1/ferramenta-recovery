@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import os
 
+from src.device_reader import read_aligned
+
 DEFAULT_SECTOR_SIZE = 512
 INVALID_FILENAME_CHARS = '<>:"/\\|?*'
 
@@ -38,25 +40,6 @@ def _unique_output_path(output_dir: str, filename: str) -> str:
         if not os.path.exists(candidate):
             return candidate
         counter += 1
-
-
-def _read_aligned(device, offset: int, length: int, sector_size: int) -> bytes:
-    """Le ``length`` bytes a partir de ``offset`` com leituras alinhadas ao sector."""
-    if length <= 0:
-        return b""
-    aligned_offset = offset - (offset % sector_size)
-    padding = offset - aligned_offset
-    total = padding + length
-    if total % sector_size:
-        total += sector_size - (total % sector_size)
-    device.seek(aligned_offset)
-    buffer = bytearray()
-    while len(buffer) < total:
-        chunk = device.read(total - len(buffer))
-        if not chunk:
-            break  # fim do dispositivo
-        buffer.extend(chunk)
-    return bytes(buffer[padding:padding + length])
 
 
 def recover_file(device_path: str, entry: dict, output_dir: str) -> str:
@@ -93,7 +76,7 @@ def recover_file(device_path: str, entry: dict, output_dir: str) -> str:
                     break
                 offset = partition_offset + int(run["block"]) * block_size
                 length = min(int(run["count"]) * block_size, remaining)
-                data = _read_aligned(device, offset, length, sector_size)
+                data = read_aligned(device, offset, length, sector_size)
                 if not data:
                     break  # posicao fora do dispositivo
                 output.write(data)

@@ -137,6 +137,158 @@ class PainelDeDetalhes(QFrame):
         return resultado
 
 
+# Estados por que passa uma operacao, com o rotulo apresentado ao utilizador.
+AGUARDANDO = "aguardando"
+EM_ANALISE = "analise"
+EM_RECUPERACAO = "recuperacao"
+CONCLUIDO = "concluido"
+ERRO = "erro"
+
+ESTADOS = {
+    AGUARDANDO: "Aguardando",
+    EM_ANALISE: "Em analise",
+    EM_RECUPERACAO: "Em recuperacao",
+    CONCLUIDO: "Concluido",
+    ERRO: "Erro",
+}
+
+
+class EstadoDaOperacao(QWidget):
+    """Ponto colorido, descricao do estado e barra de progresso."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.estado = AGUARDANDO
+
+        self.ponto = QLabel("")
+        self.ponto.setObjectName(theme.PONTO_DE_ESTADO)
+        self.ponto.setFixedSize(12, 12)
+        self.etiqueta = QLabel(ESTADOS[AGUARDANDO])
+        self.etiqueta.setObjectName(theme.ESTADO_DA_OPERACAO)
+        self.detalhe = QLabel("")
+        self.detalhe.setObjectName(theme.SUBTITULO)
+
+        self.barra = QProgressBar()
+        self.barra.setObjectName(theme.BARRA_DE_PROGRESSO)
+        self.barra.setTextVisible(True)
+        self.barra.setRange(0, 100)
+        self.barra.setValue(0)
+
+        linha = QHBoxLayout()
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(8)
+        linha.addWidget(self.ponto)
+        linha.addWidget(self.etiqueta)
+        linha.addWidget(self.detalhe, 1)
+
+        disposicao = QVBoxLayout(self)
+        disposicao.setContentsMargins(0, 0, 0, 0)
+        disposicao.setSpacing(6)
+        disposicao.addLayout(linha)
+        disposicao.addWidget(self.barra)
+        self.definir_estado(AGUARDANDO)
+
+    def definir_estado(self, estado: str, detalhe: str = "") -> None:
+        """Muda o estado, a cor do ponto e o texto de acompanhamento."""
+        self.estado = estado if estado in ESTADOS else AGUARDANDO
+        self.etiqueta.setText(ESTADOS[self.estado])
+        self.detalhe.setText(detalhe)
+        for widget in (self.ponto, self.etiqueta):
+            widget.setProperty("estado", self.estado)
+            theme.repolir(widget)
+        if self.estado in (AGUARDANDO, CONCLUIDO, ERRO):
+            self.barra.setRange(0, 100)
+            self.barra.setValue(100 if self.estado == CONCLUIDO else 0)
+
+    def definir_progresso(self, feitos: int, total: int) -> None:
+        """Actualiza a barra; sem total conhecido fica em movimento continuo."""
+        if not total:
+            self.barra.setRange(0, 0)  # indeterminada
+            return
+        self.barra.setRange(0, 100)
+        self.barra.setValue(max(0, min(100, round(feitos * 100 / total))))
+
+    def percentagem(self) -> int:
+        return self.barra.value()
+
+
+class CartaoDeEstatistica(QFrame):
+    """Bloco com um numero grande e a respectiva legenda."""
+
+    def __init__(self, legenda: str, cor: str = "azul", parent=None):
+        super().__init__(parent)
+        self.setObjectName(theme.CARTAO_DE_ESTATISTICA)
+
+        self.etiqueta_valor = QLabel("0")
+        self.etiqueta_valor.setObjectName(theme.VALOR_DA_ESTATISTICA)
+        self.etiqueta_valor.setProperty("cor", cor)
+        self.etiqueta_legenda = QLabel(legenda)
+        self.etiqueta_legenda.setObjectName(theme.DETALHE_DO_CARTAO)
+        self.etiqueta_legenda.setWordWrap(True)
+
+        disposicao = QVBoxLayout(self)
+        disposicao.setContentsMargins(16, 12, 16, 12)
+        disposicao.setSpacing(2)
+        disposicao.addWidget(self.etiqueta_valor)
+        disposicao.addWidget(self.etiqueta_legenda)
+
+    def definir_valor(self, valor) -> None:
+        self.etiqueta_valor.setText(str(valor))
+
+    def valor(self) -> str:
+        return self.etiqueta_valor.text()
+
+
+class CartaoDeMetodo(QFrame):
+    """Cartao clicavel com um dos metodos de recuperacao."""
+
+    escolhido = Signal(str)
+
+    def __init__(self, metodo: str, titulo: str, descricao: str,
+                 nome_do_icone: str, cor: str = "azul", parent=None):
+        super().__init__(parent)
+        self.metodo = metodo
+        self.setObjectName(theme.ESCOLHA_DE_METODO)
+        self.setProperty("seleccionado", False)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMinimumHeight(104)
+
+        self.etiqueta_icone = QLabel()
+        self.etiqueta_icone.setPixmap(icons.chip(nome_do_icone, cor, 38))
+        self.etiqueta_icone.setFixedSize(38, 38)
+
+        self.etiqueta_titulo = QLabel(titulo)
+        self.etiqueta_titulo.setObjectName(theme.NOME_DO_CARTAO)
+        self.etiqueta_titulo.setWordWrap(True)
+        self.etiqueta_descricao = QLabel(descricao)
+        self.etiqueta_descricao.setObjectName(theme.DETALHE_DO_CARTAO)
+        self.etiqueta_descricao.setWordWrap(True)
+
+        texto = QVBoxLayout()
+        texto.setContentsMargins(0, 0, 0, 0)
+        texto.setSpacing(2)
+        texto.addWidget(self.etiqueta_titulo)
+        texto.addWidget(self.etiqueta_descricao)
+        texto.addStretch(1)
+
+        disposicao = QHBoxLayout(self)
+        disposicao.setContentsMargins(14, 12, 14, 12)
+        disposicao.setSpacing(12)
+        disposicao.addWidget(self.etiqueta_icone, 0, Qt.AlignTop)
+        disposicao.addLayout(texto, 1)
+
+    def definir_seleccionado(self, seleccionado: bool) -> None:
+        self.setProperty("seleccionado", bool(seleccionado))
+        theme.repolir(self)
+
+    def esta_seleccionado(self) -> bool:
+        return bool(self.property("seleccionado"))
+
+    def mousePressEvent(self, evento):  # noqa: N802 (nome imposto pelo Qt)
+        self.escolhido.emit(self.metodo)
+        super().mousePressEvent(evento)
+
+
 class CartaoDeDispositivo(QFrame):
     """Cartao clicavel com icone, nome, ocupacao e capacidade do dispositivo."""
 
