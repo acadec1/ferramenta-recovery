@@ -1,0 +1,315 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram name="Sequencia - Analise do dispositivo">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="c1" value="Perito" style="shape=umlLifeline;participant=umlActor;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;verticalAlign=top;spacingTop=52;outlineConnect=0;size=60;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="120" width="60" height="1080" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2" value="dispositivos : DevicesPage" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="280" y="120" width="200" height="1080" as="geometry"/>
+        </mxCell>
+        <mxCell id="c3" value="janela : MainWindow" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="540" y="120" width="200" height="1080" as="geometry"/>
+        </mxCell>
+        <mxCell id="c4" value="ficheiros : ResultsPage" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="800" y="120" width="200" height="1080" as="geometry"/>
+        </mxCell>
+        <mxCell id="c5" value="analise : TrabalhoDeAnalise" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="120" width="210" height="1080" as="geometry"/>
+        </mxCell>
+        <mxCell id="c6" value="&amp;#171;modulo&amp;#187; operacao" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="120" width="190" height="1080" as="geometry"/>
+        </mxCell>
+        <mxCell id="c7" value="&amp;#171;modulo&amp;#187; filesystem_parser" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="120" width="210" height="1080" as="geometry"/>
+        </mxCell>
+        <mxCell id="c8" value="historico : Historico" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1850" y="120" width="190" height="1080" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" value="1: escolhe o dispositivo e o metodo" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="130.0" y="240" as="sourcePoint"/>
+            <mxPoint x="380.0" y="240" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" value="2: varrimento_pedido(device_path, metodo)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="380.0" y="280" as="sourcePoint"/>
+            <mxPoint x="640.0" y="280" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" value="3: ir_para(&amp;quot;resultados&amp;quot;)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;edgeStyle=orthogonalEdgeStyle;curved=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640.0" y="310" as="sourcePoint"/>
+            <mxPoint x="640.0" y="344" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e12" value="4: iniciar_analise(device_path, metodo)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640.0" y="380" as="sourcePoint"/>
+            <mxPoint x="900.0" y="380" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13" value="5: start()" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;rounded=0;fontSize=12;strokeColor=#2d6ca2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640.0" y="420" as="sourcePoint"/>
+            <mxPoint x="1165.0" y="420" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e14" value="6: analisar(device_path, metodo, progresso, ao_encontrar, cancelado)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1165.0" y="460" as="sourcePoint"/>
+            <mxPoint x="1425.0" y="460" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" value="7: scan_deleted_entries(...)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1425.0" y="500" as="sourcePoint"/>
+            <mxPoint x="1685.0" y="500" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c16" value="loop  [por cada registo examinado]" style="shape=umlFrame;whiteSpace=wrap;html=1;pointerEvents=0;fillColor=none;strokeColor=#9673a6;width=200;height=30;fontSize=12;fontStyle=1;fontColor=#6a4a86;" vertex="1" parent="1">
+          <mxGeometry x="850" y="540" width="910" height="220" as="geometry"/>
+        </mxCell>
+        <mxCell id="e17" value="8: ao_encontrar(entrada)" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;dashed=1;rounded=0;fontSize=12;strokeColor=#7a7a7a;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1685.0" y="600" as="sourcePoint"/>
+            <mxPoint x="1425.0" y="600" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e18" value="9: entrada normalizada" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;dashed=1;rounded=0;fontSize=12;strokeColor=#7a7a7a;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1425.0" y="640" as="sourcePoint"/>
+            <mxPoint x="1165.0" y="640" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e19" value="10: encontrados(lote)  &amp;#8212; a lista enche em tempo real" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;rounded=0;fontSize=12;strokeColor=#2d6ca2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1165.0" y="690" as="sourcePoint"/>
+            <mxPoint x="900.0" y="690" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e20" value="11: progresso(feitos, total)" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;rounded=0;fontSize=12;strokeColor=#2d6ca2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1165.0" y="730" as="sourcePoint"/>
+            <mxPoint x="900.0" y="730" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c21" value="opt  [o perito carrega em Parar operacao]" style="shape=umlFrame;whiteSpace=wrap;html=1;pointerEvents=0;fillColor=none;strokeColor=#9673a6;width=200;height=30;fontSize=12;fontStyle=1;fontColor=#6a4a86;" vertex="1" parent="1">
+          <mxGeometry x="580" y="790" width="650" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="e22" value="12: paragem_pedida()" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="900.0" y="840" as="sourcePoint"/>
+            <mxPoint x="640.0" y="840" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e23" value="13: parar()" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640.0" y="875" as="sourcePoint"/>
+            <mxPoint x="1165.0" y="875" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e24" value="14: entradas, diagnostico" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;dashed=1;rounded=0;fontSize=12;strokeColor=#7a7a7a;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1685.0" y="930" as="sourcePoint"/>
+            <mxPoint x="1425.0" y="930" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e25" value="15: (entradas, diagnostico)" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;dashed=1;rounded=0;fontSize=12;strokeColor=#7a7a7a;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1425.0" y="965" as="sourcePoint"/>
+            <mxPoint x="1165.0" y="965" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e26" value="16: concluido(entradas, diagnostico)" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;rounded=0;fontSize=12;strokeColor=#2d6ca2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1165.0" y="1000" as="sourcePoint"/>
+            <mxPoint x="640.0" y="1000" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e27" value="17: terminar_analise(device_path)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640.0" y="1035" as="sourcePoint"/>
+            <mxPoint x="900.0" y="1035" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e28" value="18: log_operation(estado=&amp;quot;analisada&amp;quot;, encontrados)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640.0" y="1070" as="sourcePoint"/>
+            <mxPoint x="1945.0" y="1070" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e29" value="19: exportar_json()" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;edgeStyle=orthogonalEdgeStyle;curved=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1945.0" y="1100" as="sourcePoint"/>
+            <mxPoint x="1945.0" y="1134" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e30" value="20: id da operacao" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;dashed=1;rounded=0;fontSize=12;strokeColor=#7a7a7a;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1945.0" y="1165" as="sourcePoint"/>
+            <mxPoint x="640.0" y="1165" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c31" value="A analise fica registada no historico mesmo que nao se recupere nada. Se houver recuperacao a seguir,&lt;br&gt;e esta mesma operacao que e completada, em vez de se criar uma segunda entrada." style="text;html=1;align=left;verticalAlign=top;fontSize=12;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1210" width="900" height="50" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="Sequencia - Recuperacao dos ficheiros">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="c1" value="Perito" style="shape=umlLifeline;participant=umlActor;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;verticalAlign=top;spacingTop=52;outlineConnect=0;size=60;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="120" width="60" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2" value="ficheiros : ResultsPage" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="280" y="120" width="200" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="c3" value="janela : MainWindow" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="540" y="120" width="200" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="c4" value="recuperacao : TrabalhoDeRecuperacao" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="800" y="120" width="230" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="c5" value="&amp;#171;modulo&amp;#187; operacao" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="120" width="190" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="c6" value="&amp;#171;modulo&amp;#187; recovery" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1340" y="120" width="190" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="c7" value="&amp;#171;modulo&amp;#187; integrity" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1590" y="120" width="190" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="c8" value="historico : Historico" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1840" y="120" width="190" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="c9" value="resumo : SummaryPage" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;size=44;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="2090" y="120" width="200" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" value="1: selecciona os ficheiros e pede a recuperacao" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="130.0" y="240" as="sourcePoint"/>
+            <mxPoint x="380.0" y="240" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" value="2: recuperacao_pedida(entradas)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="380.0" y="280" as="sourcePoint"/>
+            <mxPoint x="640.0" y="280" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e12" value="3: escolher pasta de destino" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;rounded=0;fontSize=12;strokeColor=#2d6ca2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640.0" y="320" as="sourcePoint"/>
+            <mxPoint x="130.0" y="320" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13" value="4: destino" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;dashed=1;rounded=0;fontSize=12;strokeColor=#7a7a7a;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="130.0" y="355" as="sourcePoint"/>
+            <mxPoint x="640.0" y="355" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e14" value="5: validar_destino(device_path, destino)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640.0" y="395" as="sourcePoint"/>
+            <mxPoint x="1185.0" y="395" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" value="6: ok  /  ValueError (destino no mesmo dispositivo)" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;dashed=1;rounded=0;fontSize=12;strokeColor=#7a7a7a;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1185.0" y="430" as="sourcePoint"/>
+            <mxPoint x="640.0" y="430" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e16" value="7: start()" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;rounded=0;fontSize=12;strokeColor=#2d6ca2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640.0" y="470" as="sourcePoint"/>
+            <mxPoint x="915.0" y="470" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c17" value="loop  [por cada ficheiro seleccionado]" style="shape=umlFrame;whiteSpace=wrap;html=1;pointerEvents=0;fillColor=none;strokeColor=#9673a6;width=200;height=30;fontSize=12;fontStyle=1;fontColor=#6a4a86;" vertex="1" parent="1">
+          <mxGeometry x="590" y="510" width="1180" height="300" as="geometry"/>
+        </mxCell>
+        <mxCell id="e18" value="8: recuperar_entrada(device_path, entrada, destino)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="915.0" y="570" as="sourcePoint"/>
+            <mxPoint x="1185.0" y="570" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e19" value="9: recover_file(device_path, entry, output_dir)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1185.0" y="605" as="sourcePoint"/>
+            <mxPoint x="1435.0" y="605" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e20" value="10: caminho do ficheiro gravado" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;dashed=1;rounded=0;fontSize=12;strokeColor=#7a7a7a;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1435.0" y="640" as="sourcePoint"/>
+            <mxPoint x="1185.0" y="640" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e21" value="11: compute_hash(caminho)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1185.0" y="675" as="sourcePoint"/>
+            <mxPoint x="1685.0" y="675" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e22" value="12: SHA-256" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;dashed=1;rounded=0;fontSize=12;strokeColor=#7a7a7a;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1685.0" y="710" as="sourcePoint"/>
+            <mxPoint x="1185.0" y="710" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e23" value="13: resultado (estado, caminho, hash)" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;dashed=1;rounded=0;fontSize=12;strokeColor=#7a7a7a;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1185.0" y="745" as="sourcePoint"/>
+            <mxPoint x="915.0" y="745" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e24" value="14: progresso(feitos, total)" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;rounded=0;fontSize=12;strokeColor=#2d6ca2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="915.0" y="785" as="sourcePoint"/>
+            <mxPoint x="640.0" y="785" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e25" value="15: concluido(resultados)" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;rounded=0;fontSize=12;strokeColor=#2d6ca2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="915.0" y="850" as="sourcePoint"/>
+            <mxPoint x="640.0" y="850" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e26" value="16: update_operation(id, ficheiros, estado=&amp;quot;recuperada&amp;quot;)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640.0" y="890" as="sourcePoint"/>
+            <mxPoint x="1935.0" y="890" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e27" value="17: exportar_json()" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;edgeStyle=orthogonalEdgeStyle;curved=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1935.0" y="920" as="sourcePoint"/>
+            <mxPoint x="1935.0" y="954" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e28" value="18: mostrar_operacao(operacao, ficheiros)" style="html=1;verticalAlign=bottom;endArrow=block;rounded=0;fontSize=12;strokeColor=#36393d;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640.0" y="990" as="sourcePoint"/>
+            <mxPoint x="2190.0" y="990" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e29" value="19: cartoes de estatistica e tabela de resultados" style="html=1;verticalAlign=bottom;endArrow=open;endSize=10;dashed=1;rounded=0;fontSize=12;strokeColor=#7a7a7a;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2190.0" y="1030" as="sourcePoint"/>
+            <mxPoint x="130.0" y="1030" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -61,7 +61,26 @@ src/
 tests/                  Testes unitários (mocks de pytsk3/hardware)
 tests/test_integracao.py  Teste com pytsk3 real sobre uma imagem FAT16 gerada
 tests/fat16.py            Construtor dessa imagem (ficheiro apagado incluído)
+diagrama_de_classes.drawio      Diagrama de classes (draw.io)
+diagrama_de_sequencia.drawio    Diagramas de sequência (draw.io, 2 separadores)
+diagrama_de_casos_de_uso.drawio Diagrama de casos de uso (draw.io)
 ```
+
+## Diagramas UML
+
+Os três diagramas estão na raiz, em formato **draw.io** (XML mxGraph por
+comprimir, legível e versionável). Abrem em <https://app.diagrams.net> ou no
+draw.io Desktop com *File → Open*, e exportam para PNG/PDF/SVG a partir de
+*File → Export as*.
+
+| Ficheiro | Conteúdo |
+| --- | --- |
+| `diagrama_de_classes.drawio` | As três camadas — apresentação (PySide6), aplicação/domínio e acesso ao suporte e aos dados — com as classes, os sinais Qt e as dependências entre módulos. |
+| `diagrama_de_sequencia.drawio` | Dois separadores: **Análise do dispositivo** (do clique em *Iniciar análise* ao registo no histórico, com o ciclo que enche a lista em tempo real e a paragem opcional) e **Recuperação dos ficheiros** (validação do destino, ciclo por ficheiro com SHA-256, e a operação a ser completada no histórico). |
+| `diagrama_de_casos_de_uso.drawio` | Operador e Administrador (que herda do Operador), o Windows/UAC como ator secundário, e as relações `«include»` e `«extend»`. |
+
+Os módulos Python de funções (`operacao`, `carving`, `recovery`, …) aparecem com
+o estereótipo `«modulo»`, por não terem estado próprio.
 
 ## Execução
 
