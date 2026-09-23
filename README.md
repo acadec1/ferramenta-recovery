@@ -61,6 +61,7 @@ src/
 tests/                  Testes unitários (mocks de pytsk3/hardware)
 tests/test_integracao.py  Teste com pytsk3 real sobre uma imagem FAT16 gerada
 tests/fat16.py            Construtor dessa imagem (ficheiro apagado incluído)
+assets/logotipo_aaee.png  Logótipo da instituição, usado em toda a aplicação
 diagrama_de_classes.drawio      Diagrama de classes (draw.io)
 diagrama_de_sequencia.drawio    Diagramas de sequência (draw.io, 2 separadores)
 diagrama_de_casos_de_uso.drawio Diagrama de casos de uso (draw.io)
@@ -199,13 +200,26 @@ direita com a acção principal. Os avisos aparecem numa faixa colorida no topo 
 painel (verde para sucesso, âmbar para aviso, vermelho para erro), e a barra de
 estado mostra permanentemente se a aplicação tem privilégios de Administrador.
 
-Ao arrancar, a aplicação pede autenticação. As contas iniciais são criadas na
-primeira execução:
+Ao arrancar, a aplicação pede autenticação. **O acesso é feito pelo endereço de
+correio electrónico.** As contas iniciais são criadas na primeira execução:
 
-| Utilizador | Password      | Perfil        |
-|------------|---------------|---------------|
-| `admin`    | `admin123`    | administrador |
-| `operador` | `operador123` | operador      |
+| Email               | Palavra-passe | Perfil        |
+|---------------------|---------------|---------------|
+| `admin@aaee.mz`     | `admin123`    | administrador |
+| `operador@aaee.mz`  | `operador123` | operador      |
+
+O ecrã de entrada tem **Esqueci-me da palavra-passe**, que abre o formulário de
+reposição no mesmo cartão, sem janela nova. Indica-se o email, o sistema mostra
+a **pergunta de segurança** da conta, e com a resposta certa define-se uma nova
+palavra-passe. É assim e não por email porque a ferramenta trabalha fora de
+linha, sem servidor de correio. A pergunta das contas iniciais é *"Qual e a
+sigla da instituicao?"*, com a resposta `AAEE` — pública por estar aqui, e a
+substituir antes de qualquer uso real. A resposta não distingue maiúsculas nem
+espaços a mais, e é guardada com o mesmo PBKDF2 das palavras-passe.
+
+Se o email não existir ou a conta não tiver pergunta definida, a mensagem é a
+mesma nos dois casos: o ecrã de entrada não revela que endereços estão
+registados.
 
 ## Como o varrimento encontra os ficheiros
 
@@ -246,10 +260,16 @@ O operador não vê sequer as entradas de relatório e de contas na barra latera
 (a secção "Ferramentas" desaparece por completo). Podem criar-se mais
 contas no painel **Contas de acesso**, disponível apenas ao administrador.
 
-As passwords são guardadas com PBKDF2-HMAC-SHA256 (200 000 iterações e salt
-aleatório por conta) na tabela `users` do ficheiro `frda_historico.db` — nunca em
-claro. As passwords iniciais são públicas por estarem aqui documentadas: devem
-ser substituídas por contas próprias antes de qualquer uso real.
+Cada conta tem email, nome de utilizador, perfil e pergunta de segurança. As
+palavras-passe e as respostas de segurança são guardadas com PBKDF2-HMAC-SHA256
+(200 000 iterações e salt aleatório por conta) na tabela `users` do ficheiro
+`frda_audit.db`, na pasta da aplicação — nunca em claro. As credenciais
+iniciais são públicas por estarem aqui documentadas: devem ser substituídas por
+contas próprias antes de qualquer uso real.
+
+Uma base de dados de uma versão anterior é actualizada ao abrir: as contas
+existentes passam a ter `utilizador@aaee.mz` como email e mantêm a
+palavra-passe.
 
 O utilizador autenticado fica registado em cada operação (coluna `app_user`) e
 aparece no relatório PDF, ao lado do utilizador do sistema operativo.
@@ -263,7 +283,7 @@ py -3.11 -m unittest discover -s tests -t . -v      # suite completa
 py -3.11 -m unittest tests.test_carving -v          # um módulo isolado
 ```
 
-295 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
+344 testes. A maioria usa mocks de `pytsk3` e do `kernel32`, e imagens de disco
 sintéticas criadas em ficheiros temporários — nenhum dispositivo físico é tocado. Os
 testes da GUI correm com Qt em modo *offscreen* e ficam em `skipped` se o PySide6 não
 estiver instalado; os de `report.py` ficam em `skipped` sem o ReportLab.
@@ -303,7 +323,7 @@ Os dois hashes SHA-256 devem coincidir.
    corresponde ao `N` de `\\.\PhysicalDriveN`, e o tamanho confirma que é a pen.
 3. Abrir o PowerShell **como Administrador** e lançar `py -3.11 -m src.gui.main_window`.
    Sem elevação a barra de estado mostra o aviso e o acesso a disco bruto falha.
-4. Autenticar-se com `admin` / `admin123` (o perfil `operador` chega para os passos
+4. Autenticar-se com `admin@aaee.mz` / `admin123` (o perfil `operador` chega para os passos
    5 e 6, mas não gera o relatório do passo 7).
 5. Em **1. Dispositivo e método**, escolher a pen e o método, e carregar em
    **Iniciar análise**. A análise arranca de imediato, com o estado a amarelo e a

@@ -36,6 +36,7 @@ CORES = {
 # Nomes de objecto usados pelos paineis para se ligarem ao tema.
 BOTAO_PRIMARIO = "botaoPrimario"
 BOTAO_SECUNDARIO = "botaoSecundario"
+LIGACAO = "botaoLigacao"
 BOTAO_PARAR = "botaoParar"
 BARRA_LATERAL = "barraLateral"
 MENU_LATERAL = "menuLateral"
@@ -53,6 +54,7 @@ BARRA_CAPACIDADE = "barraCapacidade"
 NOME_DO_CARTAO = "nomeCartao"
 DETALHE_DO_CARTAO = "detalheCartao"
 MARCA = "marcaAplicacao"
+LOGOTIPO = "logotipoInstituicao"
 PONTO_DE_ESTADO = "pontoDeEstado"
 ESTADO_DA_OPERACAO = "estadoDaOperacao"
 BARRA_DE_PROGRESSO = "barraDeProgresso"
@@ -315,6 +317,22 @@ QLabel#estadoOk {{
 }}
 QLabel#erroFormulario {{
     color: {erro};
+}}
+QLabel#erroFormulario[tipo="sucesso"] {{
+    color: {sucesso};
+}}
+
+/* Botao com ar de ligacao: usado para accoes secundarias dentro de um cartao */
+QPushButton#botaoLigacao {{
+    background: transparent;
+    border: 0;
+    color: {primaria};
+    font-weight: bold;
+    padding: 6px 4px;
+    text-decoration: underline;
+}}
+QPushButton#botaoLigacao:hover {{
+    color: {primaria_escura};
 }}
 
 /* ---------------------------------------------------------------- campos */

@@ -3,15 +3,26 @@
 Os icones sao desenhados em SVG e compostos aqui mesmo (sem ficheiros externos
 nem dependencias novas), o que garante tracos consistentes, enquadramento igual
 numa grelha de 24x24 e cor definida por quem os usa.
+
+A excepcao e o logotipo da instituicao, que e uma imagem e vive em ``assets/``.
 """
 
 from __future__ import annotations
+
+import os
 
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
 from src.gui import theme
+
+# Pasta dos recursos, relativa a raiz do projecto (a que contem "src").
+PASTA_DOS_RECURSOS = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "assets",
+)
+LOGOTIPO = os.path.join(PASTA_DOS_RECURSOS, "logotipo_aaee.png")
 
 # Traco de cada icone, numa grelha normalizada de 24x24.
 DESENHOS = {
@@ -214,6 +225,33 @@ def ilustracao(nome: str, largura: int = 200, escala: int = 2) -> QPixmap:
     imagem.setDevicePixelRatio(escala)
     _cache[chave] = imagem
     return imagem
+
+
+def logotipo(altura: int = 44, escala: int = 2) -> QPixmap:
+    """Logotipo da instituicao com a altura pedida, sem deformar.
+
+    A largura resulta da proporcao da imagem: e isso que mantem o logotipo
+    alinhado com o resto do cabecalho em qualquer tamanho. Devolve um pixmap
+    vazio se o ficheiro nao estiver la, para a janela abrir na mesma.
+    """
+    chave = ("logotipo", altura, escala)
+    if chave in _cache:
+        return _cache[chave]
+
+    original = QPixmap(LOGOTIPO)
+    if original.isNull():
+        _cache[chave] = original
+        return original
+
+    imagem = original.scaledToHeight(altura * escala, Qt.SmoothTransformation)
+    imagem.setDevicePixelRatio(escala)
+    _cache[chave] = imagem
+    return imagem
+
+
+def ha_logotipo() -> bool:
+    """Indica se o ficheiro do logotipo existe e pode ser lido."""
+    return not QPixmap(LOGOTIPO).isNull()
 
 
 def limpar_cache() -> None:

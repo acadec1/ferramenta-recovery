@@ -16,7 +16,18 @@ try:
     from src.gui.pages.accounts import ERRO_CONFIRMACAO, AccountsPage
     from src.gui.pages.history import HistoryPage
     from src.gui.pages.devices import DevicesPage
-    from src.gui.pages.login import ERRO_CREDENCIAIS, LoginPage
+    from src.gui.pages.login import (
+        ERRO_CONFIRMACAO as ERRO_CONFIRMACAO_REPOSICAO,
+        ERRO_CREDENCIAIS,
+        ERRO_EMAIL_INVALIDO,
+        ERRO_NOVA_VAZIA,
+        ERRO_RESPOSTA,
+        ERRO_SEM_CONTA,
+        ERRO_SEM_EMAIL,
+        SEM_PERGUNTA,
+        SUCESSO_REPOSICAO,
+        LoginPage,
+    )
     from src.gui.pages.results import ResultsPage
     from src.gui.pages.summary import SummaryPage
     from src.gui import icons
@@ -51,6 +62,7 @@ from src.historico import (
     OPERACAO_RECUPERADA,
     Historico,
 )
+from src.auth import DEFAULT_QUESTION as PERGUNTA
 from src.auth import ROLE_ADMIN, ROLE_OPERATOR, AuthStore
 
 DISCOS = [
@@ -120,7 +132,7 @@ class LoginPageTest(PainelBase):
 
     def test_autenticacao_com_sucesso(self):
         contas = self.capturar(self.pagina.autenticado)
-        self.pagina.campo_utilizador.setText("admin")
+        self.pagina.campo_email.setText("admin@aaee.mz")
         self.pagina.campo_password.setText("admin123")
 
         self.pagina.botao_entrar.click()
@@ -131,14 +143,14 @@ class LoginPageTest(PainelBase):
 
     def test_operador(self):
         contas = self.capturar(self.pagina.autenticado)
-        self.pagina.campo_utilizador.setText("operador")
+        self.pagina.campo_email.setText("operador@aaee.mz")
         self.pagina.campo_password.setText("operador123")
         self.pagina.botao_entrar.click()
         self.assertEqual(contas[0]["role"], ROLE_OPERATOR)
 
     def test_credenciais_erradas(self):
         contas = self.capturar(self.pagina.autenticado)
-        self.pagina.campo_utilizador.setText("admin")
+        self.pagina.campo_email.setText("admin@aaee.mz")
         self.pagina.campo_password.setText("errada")
 
         self.pagina.botao_entrar.click()
@@ -150,19 +162,19 @@ class LoginPageTest(PainelBase):
 
     def test_enter_autentica(self):
         contas = self.capturar(self.pagina.autenticado)
-        self.pagina.campo_utilizador.setText("admin")
+        self.pagina.campo_email.setText("admin@aaee.mz")
         self.pagina.campo_password.setText("admin123")
         self.pagina.campo_password.returnPressed.emit()
         self.assertEqual(len(contas), 1)
 
     def test_preparar_limpa_o_formulario(self):
-        self.pagina.campo_utilizador.setText("admin")
+        self.pagina.campo_email.setText("admin@aaee.mz")
         self.pagina.campo_password.setText("x")
         self.pagina.etiqueta_erro.setText("erro")
 
         self.pagina.preparar()
 
-        self.assertEqual(self.pagina.campo_utilizador.text(), "")
+        self.assertEqual(self.pagina.campo_email.text(), "")
         self.assertEqual(self.pagina.campo_password.text(), "")
         self.assertEqual(self.pagina.etiqueta_erro.text(), "")
 
@@ -180,6 +192,118 @@ class LoginPageTest(PainelBase):
         abaixo = disposicao.itemAt(disposicao.count() - 1)
         self.assertEqual(acima.spacerItem().expandingDirections(),
                          abaixo.spacerItem().expandingDirections())
+
+
+class ReposicaoNoLoginTest(PainelBase):
+    """A reposicao da palavra-passe acontece no mesmo cartao, sem janela nova."""
+
+    def setUp(self):
+        patcher = mock.patch.object(auth, "ITERATIONS", 1000)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.store = AuthStore(":memory:")
+        self.store.ensure_default_accounts()
+        self.addCleanup(self.store.close)
+        self.pagina = self.registar(LoginPage(self.store))
+
+    def _repor(self, email="admin@aaee.mz", resposta="AAEE", nova="nova-pass",
+               confirmacao=None):
+        self.pagina.botao_esqueci.click()  # como o utilizador la chega
+        self.pagina.campo_email_reposicao.setText(email)
+        self.pagina.botao_procurar.click()
+        self.pagina.campo_resposta.setText(resposta)
+        self.pagina.campo_nova.setText(nova)
+        self.pagina.campo_confirmacao.setText(nova if confirmacao is None
+                                              else confirmacao)
+        self.pagina.botao_definir.click()
+
+    def test_ligacao_abre_o_formulario_de_reposicao(self):
+        self.assertFalse(self.pagina.em_reposicao())
+        self.pagina.botao_esqueci.click()
+        self.assertTrue(self.pagina.em_reposicao())
+
+    def test_email_ja_escrito_passa_para_a_reposicao(self):
+        self.pagina.campo_email.setText("admin@aaee.mz")
+
+        self.pagina.botao_esqueci.click()
+
+        self.assertEqual(self.pagina.campo_email_reposicao.text(), "admin@aaee.mz")
+        self.assertEqual(self.pagina.etiqueta_pergunta.text(), PERGUNTA)
+
+    def test_procurar_mostra_a_pergunta(self):
+        self.pagina.campo_email_reposicao.setText("admin@aaee.mz")
+        self.pagina.botao_procurar.click()
+        self.assertEqual(self.pagina.etiqueta_pergunta.text(), PERGUNTA)
+        self.assertEqual(self.pagina.etiqueta_erro_reposicao.text(), "")
+
+    def test_email_desconhecido_nao_revela_se_existe(self):
+        self.pagina.campo_email_reposicao.setText("ninguem@aaee.mz")
+        self.pagina.botao_procurar.click()
+        self.assertEqual(self.pagina.etiqueta_pergunta.text(), SEM_PERGUNTA)
+        self.assertEqual(self.pagina.etiqueta_erro_reposicao.text(), ERRO_SEM_CONTA)
+
+    def test_email_invalido(self):
+        self.pagina.campo_email_reposicao.setText("admin")
+        self.pagina.botao_procurar.click()
+        self.assertEqual(self.pagina.etiqueta_erro_reposicao.text(),
+                         ERRO_EMAIL_INVALIDO)
+
+    def test_reposicao_com_sucesso(self):
+        self._repor()
+
+        self.assertIsNotNone(self.store.authenticate("admin@aaee.mz", "nova-pass"))
+        self.assertIsNone(self.store.authenticate("admin@aaee.mz", "admin123"))
+        # volta ao inicio de sessao, com o email preenchido e a confirmacao
+        self.assertFalse(self.pagina.em_reposicao())
+        self.assertEqual(self.pagina.campo_email.text(), "admin@aaee.mz")
+        self.assertEqual(self.pagina.etiqueta_erro.text(), SUCESSO_REPOSICAO)
+        self.assertEqual(self.pagina.etiqueta_erro.property("tipo"), "sucesso")
+
+    def test_resposta_errada_nao_altera_a_password(self):
+        self._repor(resposta="errada")
+
+        self.assertIsNotNone(self.store.authenticate("admin@aaee.mz", "admin123"))
+        self.assertTrue(self.pagina.em_reposicao())
+        self.assertEqual(self.pagina.etiqueta_erro_reposicao.text(), ERRO_RESPOSTA)
+        self.assertEqual(self.pagina.campo_resposta.text(), "")
+
+    def test_confirmacao_diferente(self):
+        self._repor(confirmacao="outra")
+
+        self.assertIsNotNone(self.store.authenticate("admin@aaee.mz", "admin123"))
+        self.assertEqual(self.pagina.etiqueta_erro_reposicao.text(),
+                         ERRO_CONFIRMACAO_REPOSICAO)
+
+    def test_nova_password_vazia(self):
+        self._repor(nova="")
+
+        self.assertIsNotNone(self.store.authenticate("admin@aaee.mz", "admin123"))
+        self.assertEqual(self.pagina.etiqueta_erro_reposicao.text(), ERRO_NOVA_VAZIA)
+
+    def test_definir_sem_procurar_a_pergunta_nao_rebenta(self):
+        self.pagina.campo_nova.setText("nova-pass")
+        self.pagina.campo_confirmacao.setText("nova-pass")
+
+        self.pagina.botao_definir.click()
+
+        self.assertEqual(self.pagina.etiqueta_erro_reposicao.text(), ERRO_SEM_EMAIL)
+
+    def test_voltar_limpa_o_formulario(self):
+        self.pagina.campo_email_reposicao.setText("admin@aaee.mz")
+        self.pagina.botao_procurar.click()
+        self.pagina.campo_resposta.setText("AAEE")
+
+        self.pagina.botao_voltar.click()
+
+        self.assertFalse(self.pagina.em_reposicao())
+        self.assertEqual(self.pagina.campo_email_reposicao.text(), "")
+        self.assertEqual(self.pagina.campo_resposta.text(), "")
+        self.assertEqual(self.pagina.etiqueta_pergunta.text(), SEM_PERGUNTA)
+
+    def test_campos_sensiveis_escondidos(self):
+        for campo in (self.pagina.campo_resposta, self.pagina.campo_nova,
+                      self.pagina.campo_confirmacao):
+            self.assertEqual(campo.echoMode(), QLineEdit.Password)
 
 
 class DevicesPageTest(PainelBase):
@@ -908,47 +1032,76 @@ class AccountsPageTest(PainelBase):
         self.pagina = self.registar(AccountsPage(self.store))
         self.pagina.carregar()
 
+    def _preencher(self, email="perito3@aaee.mz", utilizador="perito3",
+                   password="pass-forte", confirmacao=None, resposta="Maputo"):
+        self.pagina.campo_email.setText(email)
+        self.pagina.campo_utilizador.setText(utilizador)
+        self.pagina.campo_password.setText(password)
+        self.pagina.campo_confirmacao.setText(
+            password if confirmacao is None else confirmacao
+        )
+        self.pagina.campo_resposta.setText(resposta)
+
     def test_lista_contas(self):
         self.assertEqual(self.pagina.tabela.rowCount(), 2)
-        self.assertEqual(self.pagina.tabela.item(0, 0).text(), "admin")
-        self.assertEqual(self.pagina.tabela.item(0, 1).text(), ROLE_ADMIN)
+        self.assertEqual(self.pagina.tabela.item(0, 0).text(), "admin@aaee.mz")
+        self.assertEqual(self.pagina.tabela.item(0, 1).text(), "admin")
+        self.assertEqual(self.pagina.tabela.item(0, 2).text(), ROLE_ADMIN)
 
     def test_criar_conta(self):
         criadas = self.capturar(self.pagina.conta_criada)
-        self.pagina.campo_utilizador.setText("perito3")
-        self.pagina.campo_password.setText("pass-forte")
-        self.pagina.campo_confirmacao.setText("pass-forte")
+        self._preencher()
         self.pagina.combo_perfil.setCurrentText(ROLE_OPERATOR)
 
         self.pagina.botao_criar.click()
 
-        self.assertEqual(criadas, ["perito3"])
+        self.assertEqual(criadas, ["perito3@aaee.mz"])
         self.assertEqual(self.pagina.tabela.rowCount(), 3)
+        self.assertEqual(self.pagina.campo_email.text(), "")
         self.assertEqual(self.pagina.campo_utilizador.text(), "")
-        conta = self.store.authenticate("perito3", "pass-forte")
+        conta = self.store.authenticate("perito3@aaee.mz", "pass-forte")
         self.assertEqual(conta["role"], ROLE_OPERATOR)
+
+    def test_conta_criada_fica_com_pergunta_de_seguranca(self):
+        """Sem pergunta, a conta nova nao se conseguia repor sozinha."""
+        self.pagina.combo_pergunta.setCurrentText("Em que cidade nasceu?")
+        self._preencher(resposta="Maputo")
+
+        self.pagina.botao_criar.click()
+
+        self.assertEqual(self.store.security_question("perito3@aaee.mz"),
+                         "Em que cidade nasceu?")
+        self.assertTrue(
+            self.store.reset_password("perito3@aaee.mz", "maputo", "nova-pass")
+        )
 
     def test_passwords_diferentes(self):
         criadas = self.capturar(self.pagina.conta_criada)
-        self.pagina.campo_utilizador.setText("perito4")
-        self.pagina.campo_password.setText("uma")
-        self.pagina.campo_confirmacao.setText("outra")
+        self._preencher(email="perito4@aaee.mz", utilizador="perito4",
+                        password="uma", confirmacao="outra")
 
         self.pagina.botao_criar.click()
 
         self.assertEqual(criadas, [])
         self.assertEqual(self.pagina.etiqueta_erro.text(), ERRO_CONFIRMACAO)
 
-    def test_nome_duplicado(self):
+    def test_email_duplicado(self):
         criadas = self.capturar(self.pagina.conta_criada)
-        self.pagina.campo_utilizador.setText("admin")
-        self.pagina.campo_password.setText("x")
-        self.pagina.campo_confirmacao.setText("x")
+        self._preencher(email="admin@aaee.mz", utilizador="outro", password="x")
 
         self.pagina.botao_criar.click()
 
         self.assertEqual(criadas, [])
-        self.assertIn("admin", self.pagina.etiqueta_erro.text())
+        self.assertIn("admin@aaee.mz", self.pagina.etiqueta_erro.text())
+
+    def test_email_invalido(self):
+        criadas = self.capturar(self.pagina.conta_criada)
+        self._preencher(email="perito3", password="x")
+
+        self.pagina.botao_criar.click()
+
+        self.assertEqual(criadas, [])
+        self.assertIn("invalido", self.pagina.etiqueta_erro.text())
 
 
 class WidgetsETemaTest(PainelBase):

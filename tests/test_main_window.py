@@ -46,8 +46,10 @@ VOLUMES = [
      "drive_type": "Fixo", "disk_index": 0},
 ]
 
-ADMIN = {"id": 1, "username": "admin", "role": ROLE_ADMIN}
-OPERADOR = {"id": 2, "username": "operador", "role": ROLE_OPERATOR}
+ADMIN = {"id": 1, "email": "admin@aaee.mz", "username": "admin",
+         "role": ROLE_ADMIN}
+OPERADOR = {"id": 2, "email": "operador@aaee.mz", "username": "operador",
+            "role": ROLE_OPERATOR}
 
 ENTRADAS = [
     {"nome": "relatorio.docx", "name": "relatorio.docx", "tipo": "DOCX",
@@ -231,7 +233,7 @@ class SessaoTest(JanelaBase):
 
     def test_login_abre_a_aplicacao_na_mesma_janela(self):
         janela = self._janela(user=None)
-        janela.login_page.campo_utilizador.setText("admin")
+        janela.login_page.campo_email.setText("admin@aaee.mz")
         janela.login_page.campo_password.setText("admin123")
 
         janela.login_page.botao_entrar.click()
@@ -766,13 +768,15 @@ class EstadoTest(JanelaBase):
     def test_conta_criada_notifica(self):
         janela = self._janela(ADMIN)
         janela.ir_para("contas")
+        janela.accounts_page.campo_email.setText("perito3@aaee.mz")
         janela.accounts_page.campo_utilizador.setText("perito3")
         janela.accounts_page.campo_password.setText("pass")
         janela.accounts_page.campo_confirmacao.setText("pass")
+        janela.accounts_page.campo_resposta.setText("Maputo")
 
         janela.accounts_page.botao_criar.click()
 
-        self.assertIn("perito3", janela.banner.text())
+        self.assertIn("perito3@aaee.mz", janela.banner.text())
 
 
 if __name__ == "__main__":

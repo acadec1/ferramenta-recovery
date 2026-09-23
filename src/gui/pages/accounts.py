@@ -19,14 +19,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.auth import PERMISSIONS, ROLES
+from src.auth import PERMISSIONS, ROLES, SECURITY_QUESTIONS
 from src.gui import theme
 from src.gui.widgets import CabecalhoDePainel
 
 TITULO = "Contas e perfis de acesso"
 DESCRICAO = "O administrador faz tudo; o operador so escaneia e recupera."
-COLUNAS = ("Utilizador", "Perfil", "Criada em")
-ERRO_CONFIRMACAO = "As passwords nao coincidem."
+COLUNAS = ("Email", "Utilizador", "Perfil", "Criada em")
+ERRO_CONFIRMACAO = "As palavras-passe nao coincidem."
 
 
 class AccountsPage(QWidget):
@@ -49,9 +49,11 @@ class AccountsPage(QWidget):
         cabecalho_tabela = self.tabela.horizontalHeader()
         cabecalho_tabela.setStretchLastSection(False)
         cabecalho_tabela.setSectionResizeMode(0, QHeaderView.Stretch)
-        cabecalho_tabela.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        cabecalho_tabela.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        for coluna in (1, 2, 3):
+            cabecalho_tabela.setSectionResizeMode(coluna, QHeaderView.ResizeToContents)
 
+        self.campo_email = QLineEdit()
+        self.campo_email.setPlaceholderText("nome@aaee.mz")
         self.campo_utilizador = QLineEdit()
         self.campo_password = QLineEdit()
         self.campo_password.setEchoMode(QLineEdit.Password)
@@ -61,13 +63,27 @@ class AccountsPage(QWidget):
         for perfil in ROLES:
             self.combo_perfil.addItem(perfil, perfil)
 
+        # Sem pergunta de seguranca a conta nao se consegue repor sozinha,
+        # por isso ela faz parte do formulario de criacao.
+        self.combo_pergunta = QComboBox()
+        self.combo_pergunta.setEditable(True)
+        for pergunta in SECURITY_QUESTIONS:
+            self.combo_pergunta.addItem(pergunta)
+        # sem isto o campo abre a mostrar o fim do texto, cortado a esquerda
+        self.combo_pergunta.lineEdit().setCursorPosition(0)
+        self.campo_resposta = QLineEdit()
+        self.campo_resposta.setPlaceholderText("resposta de seguranca")
+
         formulario = QFormLayout()
         formulario.setHorizontalSpacing(12)
         formulario.setVerticalSpacing(8)
+        formulario.addRow("Email:", self.campo_email)
         formulario.addRow("Utilizador:", self.campo_utilizador)
-        formulario.addRow("Password:", self.campo_password)
+        formulario.addRow("Palavra-passe:", self.campo_password)
         formulario.addRow("Confirmar:", self.campo_confirmacao)
         formulario.addRow("Perfil:", self.combo_perfil)
+        formulario.addRow("Pergunta:", self.combo_pergunta)
+        formulario.addRow("Resposta:", self.campo_resposta)
 
         self.etiqueta_erro = QLabel("")
         self.etiqueta_erro.setObjectName("erroFormulario")
@@ -94,7 +110,7 @@ class AccountsPage(QWidget):
 
         cartao = QFrame()
         cartao.setObjectName(theme.PAINEL_DETALHES)
-        cartao.setFixedWidth(300)
+        cartao.setFixedWidth(330)
         cartao.setLayout(cartao_conteudo)
 
         conteudo = QVBoxLayout()
@@ -123,7 +139,8 @@ class AccountsPage(QWidget):
         contas = self.auth_store.list_users()
         self.tabela.setRowCount(len(contas))
         for linha, conta in enumerate(contas):
-            valores = (conta["username"], conta["role"], conta["created_at"][:19])
+            valores = (conta["email"], conta["username"], conta["role"],
+                       conta["created_at"][:19].replace("T", " "))
             for coluna, valor in enumerate(valores):
                 self.tabela.setItem(linha, coluna, QTableWidgetItem(str(valor)))
 
@@ -134,18 +151,23 @@ class AccountsPage(QWidget):
             return
         try:
             self.auth_store.create_user(
+                self.campo_email.text(),
                 self.campo_utilizador.text(),
                 self.campo_password.text(),
                 self.combo_perfil.currentData(),
+                self.combo_pergunta.currentText(),
+                self.campo_resposta.text(),
             )
         except ValueError as erro:
             self.etiqueta_erro.setText(str(erro))
             return
 
-        criada = self.campo_utilizador.text().strip()
+        criada = self.campo_email.text().strip().lower()
         self.etiqueta_erro.setText("")
+        self.campo_email.clear()
         self.campo_utilizador.clear()
         self.campo_password.clear()
         self.campo_confirmacao.clear()
+        self.campo_resposta.clear()
         self.carregar()
         self.conta_criada.emit(criada)

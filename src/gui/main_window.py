@@ -62,6 +62,8 @@ from src.gui.widgets import Banner
 from src.gui.workers import TrabalhoDeAnalise, TrabalhoDeRecuperacao
 
 TITULO_JANELA = "FRDA — Ferramenta de Recuperacao de Dados Apagados"
+NOME_DA_INSTITUICAO = "Academia de Altos Estudos Estrategicos"
+ALTURA_DO_LOGOTIPO = 52
 AVISO_ADMIN = (
     "Sem privilegios de Administrador: o acesso a disco bruto vai falhar. "
     "Reinicie a partir de uma consola elevada."
@@ -155,13 +157,23 @@ class MainWindow(QMainWindow):
         return aplicacao
 
     def _construir_cabecalho(self) -> QFrame:
-        marca = QLabel()
-        marca.setPixmap(icons.chip("logotipo", "azul", 38))
-        marca.setFixedSize(38, 38)
+        # O logotipo da instituicao acompanha toda a aplicacao. Fixa-se a
+        # altura e deixa-se a largura seguir a proporcao, para nao deformar.
+        self.marca = QLabel()
+        self.marca.setObjectName(theme.LOGOTIPO)
+        if icons.ha_logotipo():
+            emblema = icons.logotipo(ALTURA_DO_LOGOTIPO)
+            self.marca.setPixmap(emblema)
+            largura = round(emblema.width() / emblema.devicePixelRatio())
+            self.marca.setFixedSize(largura, ALTURA_DO_LOGOTIPO)
+            self.marca.setToolTip(NOME_DA_INSTITUICAO)
+        else:
+            self.marca.setPixmap(icons.chip("logotipo", "azul", 38))
+            self.marca.setFixedSize(38, 38)
 
         titulo = QLabel("FRDA")
         titulo.setObjectName(theme.MARCA)
-        subtitulo = QLabel("Recuperacao forense de dados apagados")
+        subtitulo = QLabel("Recuperacao de dados apagados  ·  " + NOME_DA_INSTITUICAO)
         subtitulo.setObjectName(theme.SUBTITULO)
         identificacao = QVBoxLayout()
         identificacao.setSpacing(0)
@@ -179,7 +191,7 @@ class MainWindow(QMainWindow):
         conteudo = QHBoxLayout()
         conteudo.setContentsMargins(20, 12, 20, 12)
         conteudo.setSpacing(12)
-        conteudo.addWidget(marca)
+        conteudo.addWidget(self.marca)
         conteudo.addLayout(identificacao)
         conteudo.addStretch(1)
         conteudo.addWidget(self.etiqueta_sessao)
@@ -287,6 +299,7 @@ class MainWindow(QMainWindow):
         self.etiqueta_sessao.setText(
             "%s • %s" % (self.user.get("username", "?"), self.user.get("role", "?"))
         )
+        self.etiqueta_sessao.setToolTip(self.user.get("email", ""))
         self.janela.setCurrentIndex(1)
         self.banner.limpar()
         self.aplicar_permissoes()
