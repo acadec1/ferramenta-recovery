@@ -1,0 +1,178 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram name="Arquitectura em camadas">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="c1" value="FRDA &amp;#8212; Arquitectura em camadas" style="text;html=1;align=left;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1f3864;" vertex="1" parent="1">
+          <mxGeometry x="60" y="40" width="900" height="34" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2" value="Monolito modular: tres camadas, com o dominio dividido por responsabilidade. As dependencias sao apenas descendentes &amp;#8212; nenhuma camada conhece a que esta acima dela." style="text;html=1;align=left;verticalAlign=top;fontSize=11;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="60" y="76" width="1100" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="c3" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=30;verticalAlign=top;align=left;spacingLeft=0;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="60" y="130" width="1520" height="290" as="geometry"/>
+        </mxCell>
+        <mxCell id="c4" value="1. Camada de apresentacao &amp;#8212; interface e coordenacao (PySide6 / Qt)" style="text;html=1;align=left;verticalAlign=middle;fontSize=15;fontStyle=1;fontColor=#2b4f81;" vertex="1" parent="1">
+          <mxGeometry x="80" y="142" width="900" height="26" as="geometry"/>
+        </mxCell>
+        <mxCell id="c5" value='&lt;b&gt;MainWindow&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Encadeia as etapas: varrimento, recuperacao, integridade, registo e relato.&lt;br&gt;Nao contem logica forense.&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="90" y="182" width="430" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="c6" value='&lt;b&gt;TrabalhoDeAnalise&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;QThread: varrimento sem bloquear a janela&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="540" y="182" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="c7" value='&lt;b&gt;TrabalhoDeRecuperacao&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;QThread: recuperacao com progresso e paragem&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="806" y="182" width="264" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="c8" value='&lt;b&gt;theme &amp;#183; icons &amp;#183; widgets&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Tema institucional, iconografia e componentes partilhados&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1086" y="182" width="464" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="c9" value='&lt;b&gt;LoginPage&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;entrada e reposicao&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="90" y="276" width="230" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="c10" value='&lt;b&gt;DevicesPage&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;dispositivo e metodo&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="336" y="276" width="230" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="c11" value='&lt;b&gt;ResultsPage&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;ficheiros encontrados&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="582" y="276" width="230" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="c12" value='&lt;b&gt;SummaryPage&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;resultados da operacao&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="828" y="276" width="230" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="c13" value='&lt;b&gt;HistoryPage&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;historico de operacoes&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1074" y="276" width="230" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="c14" value='&lt;b&gt;AccountsPage&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;contas de acesso&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="276" width="230" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="c15" value="Uma so janela: os paineis trocam-se num QStackedWidget, sem abrir janelas novas." style="text;html=1;align=left;verticalAlign=top;fontSize=11;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="90" y="352" width="900" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="e16" value="usa" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;fillColor=#dae8fc;strokeColor=#6c8ebf;width=18;endWidth=34;endSize=6;fontSize=11;fontStyle=1;fontColor=#555555;verticalAlign=middle;labelBackgroundColor=#ffffff;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="420" as="sourcePoint"/>
+            <mxPoint x="820" y="468" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c17" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;opacity=30;verticalAlign=top;align=left;spacingLeft=0;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="60" y="480" width="1520" height="320" as="geometry"/>
+        </mxCell>
+        <mxCell id="c18" value="2. Camada de dominio &amp;#8212; logica forense, em modulos independentes" style="text;html=1;align=left;verticalAlign=middle;fontSize=15;fontStyle=1;fontColor=#4f7a3a;" vertex="1" parent="1">
+          <mxGeometry x="80" y="492" width="900" height="26" as="geometry"/>
+        </mxCell>
+        <mxCell id="c19" value='&lt;b&gt;operacao&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Executa uma operacao de ponta a ponta: analisa pelo metodo escolhido, valida a pasta de destino, recupera ficheiro a ficheiro e apura os totais&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="90" y="532" width="1460" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="c20" value='&lt;b&gt;device_reader&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Enumera discos e volumes;&lt;br&gt;leitura alinhada ao sector&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="90" y="616" width="353" height="74" as="geometry"/>
+        </mxCell>
+        <mxCell id="c21" value='&lt;b&gt;filesystem_parser&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;FAT16, FAT32, exFAT e NTFS&lt;br&gt;via pytsk3: entradas apagadas&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="459" y="616" width="353" height="74" as="geometry"/>
+        </mxCell>
+        <mxCell id="c22" value='&lt;b&gt;carving&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Assinaturas de cabecalho e&lt;br&gt;rodape: JPEG, PDF, DOCX&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="828" y="616" width="353" height="74" as="geometry"/>
+        </mxCell>
+        <mxCell id="c23" value='&lt;b&gt;recovery&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Reconstroi o ficheiro a partir&lt;br&gt;dos clusters da entrada&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1197" y="616" width="353" height="74" as="geometry"/>
+        </mxCell>
+        <mxCell id="c24" value='&lt;b&gt;integrity&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;SHA-256 de cada ficheiro recuperado&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="90" y="704" width="353" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="c25" value='&lt;b&gt;auth&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Contas, perfis e autenticacao (PBKDF2)&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="459" y="704" width="353" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="c26" value='&lt;b&gt;historico&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Registo das operacoes realizadas&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="828" y="704" width="353" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="c27" value='&lt;b&gt;report&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Relatorio da operacao em PDF&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1197" y="704" width="353" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="e28" value="" style="endArrow=open;endSize=10;html=1;rounded=0;strokeColor=#9a9a9a;dashed=1;fontSize=10;fontColor=#777777;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="594" as="sourcePoint"/>
+            <mxPoint x="266" y="616" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e29" value="" style="endArrow=open;endSize=10;html=1;rounded=0;strokeColor=#9a9a9a;dashed=1;fontSize=10;fontColor=#777777;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="594" as="sourcePoint"/>
+            <mxPoint x="635" y="616" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e30" value="" style="endArrow=open;endSize=10;html=1;rounded=0;strokeColor=#9a9a9a;dashed=1;fontSize=10;fontColor=#777777;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="594" as="sourcePoint"/>
+            <mxPoint x="1004" y="616" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e31" value="" style="endArrow=open;endSize=10;html=1;rounded=0;strokeColor=#9a9a9a;dashed=1;fontSize=10;fontColor=#777777;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="594" as="sourcePoint"/>
+            <mxPoint x="1373" y="616" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e32" value="usa" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;width=18;endWidth=34;endSize=6;fontSize=11;fontStyle=1;fontColor=#555555;verticalAlign=middle;labelBackgroundColor=#ffffff;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="800" as="sourcePoint"/>
+            <mxPoint x="820" y="848" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c33" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;opacity=30;verticalAlign=top;align=left;spacingLeft=0;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="60" y="860" width="1520" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="c34" value="3. Camada de acesso a dados &amp;#8212; recursos de mais baixo nivel" style="text;html=1;align=left;verticalAlign=middle;fontSize=15;fontStyle=1;fontColor=#9a7100;" vertex="1" parent="1">
+          <mxGeometry x="80" y="872" width="900" height="26" as="geometry"/>
+        </mxCell>
+        <mxCell id="c35" value='&lt;b&gt;ctypes / kernel32&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;API do Windows: CreateFileW,&lt;br&gt;DeviceIoControl, IOCTL de disco&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="90" y="912" width="279" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="c36" value='&lt;b&gt;pytsk3 / The Sleuth Kit&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Leitura das estruturas dos&lt;br&gt;sistemas de ficheiros&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="385" y="912" width="279" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="c37" value='&lt;b&gt;sqlite3&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Base de dados das contas&lt;br&gt;e do historico&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="680" y="912" width="279" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="c38" value='&lt;b&gt;Sistema de ficheiros&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Escrita dos ficheiros&lt;br&gt;recuperados e do JSON&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="975" y="912" width="279" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="c39" value='&lt;b&gt;ReportLab&lt;/b&gt;&lt;br&gt;&lt;font style="font-size: 10px"&gt;Composicao do relatorio&lt;br&gt;em PDF&lt;/font&gt;' style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;align=center;fontSize=12;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="912" width="279" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="e40" value="acede a" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;fillColor=#ffe6cc;strokeColor=#d79b00;width=18;endWidth=34;endSize=6;fontSize=11;fontStyle=1;fontColor=#555555;verticalAlign=middle;labelBackgroundColor=#ffffff;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="1060" as="sourcePoint"/>
+            <mxPoint x="820" y="1108" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c41" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;opacity=30;verticalAlign=top;align=left;spacingLeft=0;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1120" width="1520" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="c42" value="Recursos externos a aplicacao" style="text;html=1;align=left;verticalAlign=middle;fontSize=15;fontStyle=1;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1132" width="900" height="26" as="geometry"/>
+        </mxCell>
+        <mxCell id="c43" value="Discos e volumes&lt;br&gt;\\.\PhysicalDriveN" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#ffffff;strokeColor=#999999;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1170" width="230" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="c44" value="Imagem de disco&lt;br&gt;.dd &amp;#183; .img &amp;#183; .raw" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#ffffff;strokeColor=#999999;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="336" y="1170" width="230" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="c45" value="frda_audit.db&lt;br&gt;contas de acesso" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#ffffff;strokeColor=#999999;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="582" y="1170" width="230" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="c46" value="frda_historico.db&lt;br&gt;+ frda_historico.json" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#ffffff;strokeColor=#999999;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="828" y="1170" width="230" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="c47" value="Pasta de destino&lt;br&gt;ficheiros recuperados" style="shape=folder;tabWidth=54;tabHeight=14;tabPosition=left;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#999999;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1074" y="1170" width="230" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="c48" value="relatorio.pdf&lt;br&gt;relatorio da operacao" style="shape=note;size=16;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="1170" width="230" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="c49" value="As setas largas marcam a unica direccao permitida entre camadas. Dentro do dominio, o modulo &lt;b&gt;operacao&lt;/b&gt; e o unico que conhece os outros: e ele que encadeia a analise, a recuperacao, o calculo do SHA-256 e o registo.&lt;br&gt;Os modulos do dominio nao se conhecem entre si, o que permite testa-los isoladamente &amp;#8212; e o que a suite de testes faz, com substitutos do pytsk3 e do hardware." style="text;html=1;align=left;verticalAlign=top;fontSize=11;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1330" width="1300" height="60" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -62,6 +62,7 @@ tests/                  Testes unitários (mocks de pytsk3/hardware)
 tests/test_integracao.py  Teste com pytsk3 real sobre uma imagem FAT16 gerada
 tests/fat16.py            Construtor dessa imagem (ficheiro apagado incluído)
 assets/logotipo_aaee.png  Logótipo da instituição, usado em toda a aplicação
+diagrama_de_arquitectura.drawio Arquitectura em camadas (draw.io)
 diagrama_de_classes.drawio      Diagrama de classes (draw.io)
 diagrama_de_sequencia.drawio    Diagramas de sequência (draw.io, 2 separadores)
 diagrama_de_casos_de_uso.drawio Diagrama de casos de uso (draw.io)
@@ -76,6 +77,7 @@ draw.io Desktop com *File → Open*, e exportam para PNG/PDF/SVG a partir de
 
 | Ficheiro | Conteúdo |
 | --- | --- |
+| `diagrama_de_arquitectura.drawio` | As três camadas — apresentação, domínio e acesso a dados —, os recursos externos e as setas que marcam o sentido descendente das dependências. |
 | `diagrama_de_classes.drawio` | As três camadas — apresentação (PySide6), aplicação/domínio e acesso ao suporte e aos dados — com as classes, os sinais Qt e as dependências entre módulos. |
 | `diagrama_de_sequencia.drawio` | Dois separadores: **Análise do dispositivo** (do clique em *Iniciar análise* ao registo no histórico, com o ciclo que enche a lista em tempo real e a paragem opcional) e **Recuperação dos ficheiros** (validação do destino, ciclo por ficheiro com SHA-256, e a operação a ser completada no histórico). |
 | `diagrama_de_casos_de_uso.drawio` | Operador e Administrador (que herda do Operador), o Windows/UAC como ator secundário, e as relações `«include»` e `«extend»`. |
